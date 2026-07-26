@@ -4,7 +4,52 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 프로젝트 개요
 
-Next.js 15와 Supabase를 사용한 풀스택 웹 애플리케이션 스타터 킷입니다. App Router, Server Components, 그리고 Supabase Auth를 활용한 인증 시스템을 포함하고 있습니다.
+**ChatService** — 채팅 서비스 프로젝트입니다. [nextjs-supabase-starter-kit](https://github.com/kyungpyo-ai/nextjs-supabase-starter-kit)을 베이스라인으로 시작했으며, Next.js 15 + Supabase 인증 스캐폴드 위에 채팅 기능을 새로 구현해나가는 단계입니다.
+
+- **이 레포(origin)**: https://github.com/kyungpyo-ai/ChatService
+- **베이스 스타터킷(remote: starter-kit)**: https://github.com/kyungpyo-ai/nextjs-supabase-starter-kit
+- **Supabase 프로젝트**: `chat-service` (ref: `rhtjdbgjpoucpwkfalxp`, 리전: ap-northeast-2/서울)
+
+> ⚠️ **새 세션(특히 PRD 작성)에서 먼저 읽어야 할 부분**: 아래 "현재 구현된 것" / "아직 구현되지 않은 것"을 확인하고, 이미 있는 인증/프로필 기능을 중복 설계하지 않도록 주의하세요. 채팅 관련 기능(대화방, 메시지, 실시간 등)은 DB 테이블부터 전부 없는 완전한 백지 상태입니다.
+
+## 현재 구현된 것 (스타터킷 베이스라인)
+
+### 인증 (Supabase Auth, 이메일+OAuth 지원 구조)
+- `app/auth/login/page.tsx`, `sign-up/page.tsx`, `sign-up-success/page.tsx` — 로그인/회원가입
+- `app/auth/forgot-password/page.tsx`, `update-password/page.tsx` — 비밀번호 재설정
+- `app/auth/callback/route.ts`, `confirm/route.ts` — OAuth 콜백 / 이메일 확인
+- `app/auth/error/page.tsx` — 인증 에러 페이지
+- `app/auth/setup-profile/page.tsx` — OAuth 최초 로그인 시 닉네임 설정 (`app/actions/profile.ts`의 `setupProfileAction`)
+- `app/actions/auth.ts` — `signOut` 서버 액션
+- `app/actions/profile.ts` — 닉네임/프로필 수정, 닉네임 중복 확인 서버 액션
+- 관련 폼 컴포넌트: `components/login-form.tsx`, `sign-up-form.tsx`, `forgot-password-form.tsx`, `update-password-form.tsx`, `setup-profile-form.tsx`, `social-login-buttons.tsx`, `auth-button.tsx`, `logout-button.tsx`
+
+### 미들웨어 / 라우트 보호
+- `middleware.ts` + `lib/supabase/middleware.ts` — 홈(`/`)과 `/auth/*`를 제외한 모든 경로는 비로그인 시 `/auth/login`으로 리다이렉트 (원래 있던 `/admin` 전용 분기는 제거됨)
+
+### DB 스키마 (Supabase, 현재 테이블은 이것 하나뿐)
+- `profiles` 테이블 — `id`(auth.users 참조), `email`, `full_name`, `username`(unique), `avatar_url`, `website`, `role`, `created_at`, `updated_at`
+- 회원가입 시 `profiles` 행을 자동 생성하는 트리거(`handle_new_user`) + RLS 정책 포함
+- 마이그레이션 파일: `supabase/migrations/20260726000000_create_profiles_table.sql`
+- 타입: `lib/supabase/database.types.ts` (Supabase에서 자동 생성됨, 테이블 추가 시 `npm run db:types` 재생성 필요)
+
+### 페이지 (그 외)
+- `app/page.tsx` — 홈 (아직 스타터킷 플레이스홀더 문구, 채팅 서비스용으로 교체 예정)
+- `app/protected/page.tsx` — 스타터킷 원본 튜토리얼 데모 페이지 (실사용 아님, 참고용으로 유지 중)
+
+### 범용 유틸/타입 (채팅 기능에도 재사용 가능)
+- `lib/types/models.ts` — `User` 타입 (profiles 기반)
+- `lib/types/api.ts`, `components.ts`, `forms.ts`, `utils.ts` — `ApiResponse`, `PaginationParams`, `EmptyStateProps`, `NavItem` 등 범용 타입
+- `lib/utils/username.ts`, `date.ts`, `format.ts`, `toast.ts`, `auth-errors.ts`
+- `lib/queries/profile.ts`, `lib/schemas/profile.ts` — 프로필 조회/검증
+- `components/ui/*` — shadcn/ui 기본 컴포넌트 일체 (button, card, dialog, form, table, select 등)
+
+## 아직 구현되지 않은 것 (PRD/개발 대상)
+
+- 채팅 관련 DB 테이블 전무 (대화방, 메시지, 참여자, 읽음 처리 등 전부 새로 설계 필요)
+- 채팅 UI/페이지 전무
+- 실시간 기능 (Supabase Realtime 등) 미연동
+- 홈 화면이 아직 채팅 서비스 브랜딩으로 교체되지 않음
 
 ## 주요 기술 스택
 
