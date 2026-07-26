@@ -22,6 +22,13 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { setupProfileSchema, type SetupProfileInput } from "@/lib/schemas/profile";
 import { showSuccess, showError } from "@/lib/utils/toast";
 import { setupProfileAction } from "@/app/actions/profile";
@@ -57,6 +64,8 @@ export function SetupProfileForm({ suggestedUsername, redirectPath }: SetupProfi
       // FormData 객체 생성
       const formData = new FormData();
       formData.append("username", data.username);
+      formData.append("gender", data.gender);
+      formData.append("age", String(data.age));
 
       // Server Action 호출
       const result = await setupProfileAction({ success: false, message: "" }, formData);
@@ -97,11 +106,49 @@ export function SetupProfileForm({ suggestedUsername, redirectPath }: SetupProfi
             <FormItem>
               <FormLabel>닉네임 *</FormLabel>
               <FormControl>
-                <Input placeholder="예: 김민준1234" {...field} disabled={isSubmitting} />
+                <Input placeholder="예: 김민준123" {...field} disabled={isSubmitting} />
               </FormControl>
               <FormDescription>
-                3-20자의 영문, 숫자, 한글, 언더스코어(_)만 사용 가능합니다.
+                3-6자의 영문, 숫자, 한글, 언더스코어(_)만 사용 가능합니다.
               </FormDescription>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        {/* 성별 */}
+        <FormField
+          control={form.control}
+          name="gender"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>성별 *</FormLabel>
+              <Select onValueChange={field.onChange} value={field.value} disabled={isSubmitting}>
+                <FormControl>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="성별을 선택하세요" />
+                  </SelectTrigger>
+                </FormControl>
+                <SelectContent>
+                  <SelectItem value="male">남성</SelectItem>
+                  <SelectItem value="female">여성</SelectItem>
+                </SelectContent>
+              </Select>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        {/* 나이 */}
+        <FormField
+          control={form.control}
+          name="age"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>나이 *</FormLabel>
+              <FormControl>
+                <Input type="number" placeholder="예: 25" {...field} disabled={isSubmitting} />
+              </FormControl>
               <FormMessage />
             </FormItem>
           )}

@@ -15,9 +15,7 @@ const nextConfig: NextConfig = {
         protocol: "https",
         hostname: "api.dicebear.com",
       },
-      ...(supabaseHostname
-        ? [{ protocol: "https" as const, hostname: supabaseHostname }]
-        : []),
+      ...(supabaseHostname ? [{ protocol: "https" as const, hostname: supabaseHostname }] : []),
       {
         protocol: "https",
         hostname: "cdn.pixabay.com",

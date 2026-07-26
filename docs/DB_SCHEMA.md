@@ -20,12 +20,16 @@
 
 ## 1. 기존 테이블 변경 — `profiles`
 
-`ARCHITECTURE.md` §2.2 결정(게스트 = Supabase 익명 인증)에 따라, 익명 로그인 사용자도 `auth.users` INSERT 트리거(`handle_new_user`)를 통해 `profiles` 행이 자동 생성된다. 회원과 게스트를 구분할 수 있도록 컬럼을 추가한다.
+`ARCHITECTURE.md` §2.2 결정(게스트 = Supabase 익명 인증)에 따라, 익명 로그인 사용자도 `auth.users` INSERT 트리거(`handle_new_user`)를 통해 `profiles` 행이 자동 생성된다. 회원과 게스트를 구분할 수 있도록 컬럼을 추가하고, PRD §4.1 PRO-03·PRO-04에 따라 성별·나이 컬럼도 함께 추가한다.
+
+`gender`/`age`는 PRD상 필수 항목이지만, `username`과 동일한 이유로 DB 컬럼 자체는 `not null`로 강제하지 않는다 — `handle_new_user()` 트리거가 `auth.users` insert 시점에 자동으로 `profiles` 행을 생성하는데, 이 시점에는 아직 사용자가 값을 입력하기 전이라 값이 없다. 대신 `setup-profile` 플로우(§PRO-03, §PRO-04)에서 닉네임과 함께 성별·나이 입력을 강제하고, 입력 전에는 다음 단계로 진행할 수 없도록 애플리케이션 레벨에서 필수 처리한다. 이후 프로필 화면(§PRO-05)에서 셋 다 언제든지 다시 수정할 수 있다.
 
 ```sql
 alter table public.profiles
   add column is_anonymous boolean not null default false,
-  add column last_seen_at timestamptz not null default now();
+  add column last_seen_at timestamptz not null default now(),
+  add column gender text check (gender in ('male', 'female')), -- setup-profile 완료 전까지만 null, 이후 앱에서 필수로 강제
+  add column age integer check (age >= 14 and age <= 120); -- gender와 동일한 이유로 nullable
 
 -- 닉네임 부분 검색용 trigram 인덱스
 create extension if not exists pg_trgm;

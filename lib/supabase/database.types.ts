@@ -10,10 +10,12 @@ export type Database = {
     Tables: {
       profiles: {
         Row: {
+          age: number | null;
           avatar_url: string | null;
           created_at: string;
           email: string | null;
           full_name: string | null;
+          gender: string | null;
           id: string;
           role: string;
           updated_at: string | null;
@@ -21,10 +23,12 @@ export type Database = {
           website: string | null;
         };
         Insert: {
+          age?: number | null;
           avatar_url?: string | null;
           created_at?: string;
           email?: string | null;
           full_name?: string | null;
+          gender?: string | null;
           id: string;
           role?: string;
           updated_at?: string | null;
@@ -32,10 +36,12 @@ export type Database = {
           website?: string | null;
         };
         Update: {
+          age?: number | null;
           avatar_url?: string | null;
           created_at?: string;
           email?: string | null;
           full_name?: string | null;
+          gender?: string | null;
           id?: string;
           role?: string;
           updated_at?: string | null;

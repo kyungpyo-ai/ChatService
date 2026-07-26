@@ -45,11 +45,14 @@ export async function updateSession(request: NextRequest) {
   const { data } = await supabase.auth.getClaims();
   const user = data?.claims;
 
-  if (
-    request.nextUrl.pathname !== "/" &&
-    !user &&
-    !request.nextUrl.pathname.startsWith("/auth")
-  ) {
+  // 게스트(비로그인)도 접근 가능한 공개 경로 — PRD상 랜덤채팅/방 목록은 로그인 없이 이용 가능
+  const isPublicPath =
+    request.nextUrl.pathname === "/" ||
+    request.nextUrl.pathname.startsWith("/auth") ||
+    request.nextUrl.pathname.startsWith("/random") ||
+    request.nextUrl.pathname.startsWith("/rooms");
+
+  if (!isPublicPath && !user) {
     // no user, potentially respond by redirecting the user to the login page
     console.log("no user, redirecting to login page");
     const url = request.nextUrl.clone();

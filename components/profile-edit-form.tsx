@@ -22,6 +22,13 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Card, CardContent } from "@/components/ui/card";
 import { updateProfileSchema, type UpdateProfileInput } from "@/lib/schemas/profile";
 import { showSuccess, showError } from "@/lib/utils/toast";
@@ -51,6 +58,8 @@ export function ProfileEditForm({ profile }: ProfileEditFormProps) {
       full_name: profile.full_name || undefined,
       avatar_url: profile.avatar_url || "",
       website: profile.website || "",
+      gender: (profile.gender as "male" | "female" | undefined) || undefined,
+      age: profile.age != null ? String(profile.age) : undefined,
     },
   });
 
@@ -90,6 +99,12 @@ export function ProfileEditForm({ profile }: ProfileEditFormProps) {
       }
       if (data.website !== undefined) {
         formData.append("website", data.website);
+      }
+      if (data.gender !== undefined) {
+        formData.append("gender", data.gender);
+      }
+      if (data.age !== undefined) {
+        formData.append("age", String(data.age));
       }
 
       // Server Action 호출
@@ -133,10 +148,10 @@ export function ProfileEditForm({ profile }: ProfileEditFormProps) {
                 <FormItem>
                   <FormLabel>닉네임</FormLabel>
                   <FormControl>
-                    <Input placeholder="예: gymcoding123" {...field} disabled={isSubmitting} />
+                    <Input placeholder="예: coder1" {...field} disabled={isSubmitting} />
                   </FormControl>
                   <FormDescription>
-                    3-20자의 영문, 숫자, 한글, 언더스코어(_)만 사용 가능합니다.
+                    3-6자의 영문, 숫자, 한글, 언더스코어(_)만 사용 가능합니다.
                   </FormDescription>
                   {usernameAvailable === false && (
                     <p className="text-sm text-red-500">이미 사용 중인 닉네임입니다</p>
@@ -144,6 +159,48 @@ export function ProfileEditForm({ profile }: ProfileEditFormProps) {
                   {usernameAvailable === true && (
                     <p className="text-sm text-green-500">사용 가능한 닉네임입니다</p>
                   )}
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            {/* 나이 */}
+            <FormField
+              control={form.control}
+              name="age"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>나이</FormLabel>
+                  <FormControl>
+                    <Input type="number" placeholder="예: 25" {...field} disabled={isSubmitting} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            {/* 성별 */}
+            <FormField
+              control={form.control}
+              name="gender"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>성별</FormLabel>
+                  <Select
+                    onValueChange={field.onChange}
+                    value={field.value}
+                    disabled={isSubmitting}
+                  >
+                    <FormControl>
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="성별을 선택하세요" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      <SelectItem value="male">남성</SelectItem>
+                      <SelectItem value="female">여성</SelectItem>
+                    </SelectContent>
+                  </Select>
                   <FormMessage />
                 </FormItem>
               )}

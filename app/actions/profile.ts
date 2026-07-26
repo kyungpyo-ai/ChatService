@@ -23,7 +23,7 @@ import type { ActionResult } from "@/lib/types/forms";
  * 닉네임 중복 확인 후 profiles 테이블을 업데이트합니다.
  *
  * @param _prevState - 이전 상태 (React Hook Form용)
- * @param formData - 폼 데이터 (username, full_name)
+ * @param formData - 폼 데이터 (username, gender, age)
  * @returns ActionResult - 성공/실패 결과
  *
  * @example
@@ -31,7 +31,8 @@ import type { ActionResult } from "@/lib/types/forms";
  * const [state, formAction] = useActionState(setupProfileAction, initialState);
  * <form action={formAction}>
  *   <input name="username" />
- *   <input name="full_name" />
+ *   <input name="gender" />
+ *   <input name="age" />
  * </form>
  * ```
  */
@@ -58,6 +59,8 @@ export async function setupProfileAction(
     // 2. 입력 데이터 검증
     const validatedFields = setupProfileSchema.safeParse({
       username: formData.get("username"),
+      gender: formData.get("gender"),
+      age: formData.get("age"),
     });
 
     if (!validatedFields.success) {
@@ -86,6 +89,8 @@ export async function setupProfileAction(
       .from("profiles")
       .update({
         username: validatedFields.data.username,
+        gender: validatedFields.data.gender,
+        age: Number(validatedFields.data.age),
       })
       .eq("id", user.id);
 
@@ -118,7 +123,7 @@ export async function setupProfileAction(
  * 닉네임, 이름, 아바타, 웹사이트를 업데이트할 수 있습니다.
  *
  * @param _prevState - 이전 상태 (React Hook Form용)
- * @param formData - 폼 데이터 (username?, full_name?, avatar_url?, website?)
+ * @param formData - 폼 데이터 (username?, full_name?, avatar_url?, website?, gender?, age?)
  * @returns ActionResult - 성공/실패 결과
  *
  * @example
@@ -129,6 +134,8 @@ export async function setupProfileAction(
  *   <input name="full_name" />
  *   <input name="avatar_url" />
  *   <input name="website" />
+ *   <input name="gender" />
+ *   <input name="age" />
  * </form>
  * ```
  */
@@ -158,6 +165,8 @@ export async function updateProfileAction(
       full_name: formData.get("full_name") || undefined,
       avatar_url: formData.get("avatar_url") || undefined,
       website: formData.get("website") || undefined,
+      gender: formData.get("gender") || undefined,
+      age: formData.get("age") || undefined,
     });
 
     if (!validatedFields.success) {
@@ -184,7 +193,8 @@ export async function updateProfileAction(
     }
 
     // 4. 업데이트할 필드만 추출 (undefined 제외)
-    const updateData: Partial<UpdateProfileInput> = {};
+    // age는 스키마상 문자열이지만 DB 컬럼은 정수이므로 이 시점에만 숫자로 변환한다.
+    const updateData: Omit<Partial<UpdateProfileInput>, "age"> & { age?: number } = {};
     if (validatedFields.data.username) updateData.username = validatedFields.data.username;
     if (validatedFields.data.full_name !== undefined)
       updateData.full_name = validatedFields.data.full_name;
@@ -192,6 +202,8 @@ export async function updateProfileAction(
       updateData.avatar_url = validatedFields.data.avatar_url;
     if (validatedFields.data.website !== undefined)
       updateData.website = validatedFields.data.website;
+    if (validatedFields.data.gender !== undefined) updateData.gender = validatedFields.data.gender;
+    if (validatedFields.data.age !== undefined) updateData.age = Number(validatedFields.data.age);
 
     // 빈 객체인 경우 (변경 사항 없음)
     if (Object.keys(updateData).length === 0) {
