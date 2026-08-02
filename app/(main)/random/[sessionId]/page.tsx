@@ -24,7 +24,8 @@ export default async function RandomChatPage({
         ))}
       </div>
 
-      <ChatInputBar />
+      {/* TODO(Phase 5): 실제 랜덤채팅 전송 로직 연결 전까지 입력은 UI만 동작 */}
+      <ChatInputBar onSend={() => {}} />
     </div>
   );
 }

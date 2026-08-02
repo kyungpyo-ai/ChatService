@@ -55,6 +55,10 @@ export function SetupProfileForm({ suggestedUsername, redirectPath }: SetupProfi
     resolver: zodResolver(setupProfileSchema),
     defaultValues: {
       username: suggestedUsername,
+      // Select가 첫 렌더부터 제어 컴포넌트로 동작하도록 빈 문자열을 넣는다.
+      // (실제 제출 값은 genderSchema의 "male"|"female"만 유효하므로 캐스팅 필요)
+      gender: "" as unknown as SetupProfileInput["gender"],
+      age: "",
     },
   });
 

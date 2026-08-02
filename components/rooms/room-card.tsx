@@ -1,12 +1,13 @@
 import Link from "next/link";
 import { Lock, Users, Mars, Venus } from "lucide-react";
-import type { MockRoom } from "@/lib/mock/rooms";
+import type { RoomListItem } from "@/lib/queries/rooms";
 
 interface RoomCardProps {
-  room: MockRoom;
+  room: RoomListItem;
 }
 
-function formatCreatedAgo(minutes: number): string {
+function formatCreatedAgo(createdAt: string): string {
+  const minutes = Math.max(0, Math.floor((Date.now() - new Date(createdAt).getTime()) / 60000));
   if (minutes < 60) return `${minutes}분 전 생성`;
   const hours = Math.floor(minutes / 60);
   return `${hours}시간 전 생성`;
@@ -45,9 +46,7 @@ export function RoomCard({ room }: RoomCardProps) {
         <span className="text-muted-foreground shrink-0 text-xs">{room.ownerAge}세</span>
       </div>
 
-      <p className="text-muted-foreground mt-1.5 text-xs">
-        {formatCreatedAgo(room.createdMinutesAgo)}
-      </p>
+      <p className="text-muted-foreground mt-1.5 text-xs">{formatCreatedAgo(room.createdAt)}</p>
 
       {room.isPrivate && (
         <span className="bg-brand-muted text-brand absolute right-4 bottom-4 flex h-7 w-7 items-center justify-center rounded-lg">

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ChevronLeft, MoreVertical, ShieldCheck, Users } from "lucide-react";
+import { ChevronLeft, LogOut, MoreVertical, ShieldCheck, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 interface ChatHeaderProps {
@@ -11,6 +11,8 @@ interface ChatHeaderProps {
   maxMembers?: number;
   onOpenParticipants?: () => void;
   safetyLabel?: string;
+  onLeave?: () => void;
+  leaveLabel?: string;
 }
 
 /**
@@ -23,6 +25,8 @@ export function ChatHeader({
   maxMembers,
   onOpenParticipants,
   safetyLabel = "안심",
+  onLeave,
+  leaveLabel = "나가기",
 }: ChatHeaderProps) {
   return (
     <header className="bg-surface/95 sticky top-0 z-30 flex h-14 items-center gap-2 border-b px-3 backdrop-blur">
@@ -52,9 +56,21 @@ export function ChatHeader({
         </Button>
       )}
 
-      <Button variant="ghost" size="icon" aria-label="더보기">
-        <MoreVertical size={18} />
-      </Button>
+      {onLeave ? (
+        <Button
+          variant="ghost"
+          size="sm"
+          className="text-destructive hover:text-destructive gap-1 text-xs"
+          onClick={onLeave}
+        >
+          <LogOut size={14} />
+          {leaveLabel}
+        </Button>
+      ) : (
+        <Button variant="ghost" size="icon" aria-label="더보기">
+          <MoreVertical size={18} />
+        </Button>
+      )}
     </header>
   );
 }

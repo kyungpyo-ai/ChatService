@@ -64,16 +64,29 @@
 
 MVP의 핵심 축인 로그인 기반 방채팅을 구현한다. Phase 2에서 만든 방 목록/방 생성/방채팅 화면에 실제 데이터와 로직을 연결한다.
 
-- [ ] DB: `rooms`, `room_members`, `messages` 테이블 + RLS
-- [ ] 방 목록 조회 (비로그인 포함 전체 공개)
-- [ ] 방 생성 (제목, 최대 인원, 공개/비밀번호 — 해시 저장)
-- [ ] 방 입장 (로그인 필요, 정원 초과 차단, 비밀번호 검증)
-- [ ] 방채팅 화면에 텍스트 메시지 송수신 연결, Supabase Realtime 구독
-- [ ] 참여자 목록 데이터 연결
+- [x] DB: `rooms`, `room_members`, `messages` 테이블 + RLS
+- [x] 방 목록 조회 (비로그인 포함 전체 공개)
+- [x] 방 생성 (제목, 최대 인원, 공개/비밀번호 — 해시 저장)
+- [x] 방 입장 (로그인 필요, 정원 초과 차단, 비밀번호 검증)
+- [x] 방채팅 화면에 텍스트 메시지 송수신 연결, Supabase Realtime 구독
+- [x] 참여자 목록 데이터 연결
 
 **연관 PRD**: §5 ROOM-01~05, §5.1 (이미지 제외), §5.2 방채팅 완료 조건(강퇴 제외 부분)
 
 **완료 조건**: 회원이 공개방·비밀번호방을 생성/입장하고 정원 제한이 적용된 상태로 실시간 텍스트 대화가 가능하다.
+
+**검증 완료 (2026-08-02)**: Playwright로 브라우저 탭 2개를 열어 같은 방에서 실시간 텍스트 메시지 송수신 확인. 이 과정에서 발견된 버그 2건 수정:
+1. `room_members` SELECT RLS 정책이 자기 자신을 서브쿼리로 참조해 `infinite recursion` 에러 발생 → 방 목록/방채팅 페이지 전체가 500 에러로 깨짐. `is_room_member()` SECURITY DEFINER 함수로 우회하도록 수정.
+2. `messages` 테이블이 `supabase_realtime` publication에 등록되어 있지 않아 `postgres_changes` 구독 자체가 불가능했음. `alter publication supabase_realtime add table public.messages` 추가.
+3. (코드 수정) 브라우저 Realtime 클라이언트가 기본적으로 `anon` 권한으로 연결되어 로그인 사용자도 `auth.uid()`가 null로 평가되며 메시지 이벤트를 못 받던 문제 — `lib/realtime/messages.ts`에서 구독 전 `supabase.realtime.setAuth(session.access_token)` 호출하도록 수정.
+
+수정 내역은 `supabase/migrations/20260802060000_fix_room_members_recursive_policy_and_realtime_publication.sql` 참고.
+
+**추가 검증 (2026-08-02, 게스트 방 목록 노출)**: 실제 사용자 테스트 중 "로그인 안 한 사용자에게는 방 목록이 안 보인다"는 리포트로 재점검, 버그 2건 추가 수정:
+4. `profiles` SELECT RLS가 `authenticated`로만 제한되어 있어, 게스트 요청 시 방장 프로필이 항상 `null`로 조회됨 → `getRoomList()`가 `owner === null`인 방을 필터링해 방 목록이 통째로 비어 보임. anon에게 `username/gender/age/avatar_url` 등 공개 가능한 컬럼만 컬럼 단위 grant로 열어줌(이메일/실명/웹사이트는 계속 비공개).
+5. `room_members` count 집계도 anon에게는 항상 0으로 보였음(참여자 명단 자체가 authenticated 전용이라). 명단은 비공개로 유지하면서 참여자 수만 공개하기 위해 `room_member_count(rooms)` SECURITY DEFINER computed-column 함수를 추가하고, `lib/queries/rooms.ts`의 `room_members(count)` 임베드를 이 함수 호출로 교체.
+
+수정 내역은 `supabase/migrations/20260802061500_allow_anon_to_view_public_profile_fields_for_room_list.sql`, `expose_room_member_count_via_security_definer_function` 참고.
 
 ---
 
@@ -86,6 +99,18 @@ MVP의 핵심 축인 로그인 기반 방채팅을 구현한다. Phase 2에서 �
 - [ ] 닉네임 부분 검색 쿼리 (게스트/익명 계정 제외)
 - [ ] 검색 결과에 온라인 여부(예: 최근 N분 이내 `last_seen_at`) 표시
 - [ ] 검색 결과에서 프로필 조회 연결
+- [x] 방채팅 "나가기" 기능 — 방장이 나가면 방 삭제(cascade), 일반 참여자는 멤버십만 해제
+- [x] 방채팅 참여자 온라인 상태 표시 (Realtime Presence — 멤버십과 분리된 개념)
+- [x] 방채팅 참여자 입장/퇴장 실시간 반영 (참여자 목록·헤더 정원·시스템 알림 메시지, 새로고침 불필요)
+
+**추가 배경 (2026-08-02)**: 방채팅 사용 중 "뒤로가기를 눌러도 여전히 방에 참여 중인 상태인 게 애매하다"는 피드백으로 논의됨. 결론: "멤버십"(영구, `room_members` 행 — 메시지 기록 접근·재입장 권한 기준)과 "지금 온라인인지"(일시적, Presence 기준)는 서로 다른 개념이므로 분리해서 구현. 브라우저를 그냥 닫는 경우(나가기 버튼 미클릭)는 멤버십이 남아있는 게 의도된 동작이며, 이번에 추가한 Presence는 "온라인 N명" 표시 전용이고 멤버십/정원 계산에는 영향을 주지 않는다.
+
+**추가 검증 (2026-08-02, 참여자 실시간 반영 버그 3건)**: "나가기 버튼이 더보기 메뉴에 숨어있다", "참여자 입장/퇴장이 새로고침해야 반영된다", "입장/퇴장 시 채팅창에 알림이 없다" 요청을 구현하는 과정에서 이 프로젝트의 Realtime 인프라 자체의 제약을 여러 건 발견:
+1. **채널 하나에 postgres_changes 바인딩을 2개 이상 걸면 서버 등록이 조용히 실패함** — 클라이언트는 `SUBSCRIBED`를 받지만 `realtime.subscription`에 행이 안 생김(Node 스크립트로 격리 재현·확인). 이벤트마다 별도 채널로 분리해 해결.
+2. **`room_members` 테이블이 애초에 `supabase_realtime` publication에 등록된 적이 없었음** — RLS/grant/replica identity를 아무리 고쳐도 postgres_changes 구독 자체가 서버에 등록되지 않던 진짜 원인. `alter publication supabase_realtime add table public.room_members` 추가.
+3. **DELETE 이벤트의 old row가 REPLICA IDENTITY FULL이어도 클라이언트에는 기본키(`id`)만 전달됨** — "누가 나갔는지" payload만으로 특정 불가. `room_members` 변경은 `event: "*"` 단일 바인딩으로만 받고, 이벤트가 오면 참여자 목록을 재조회해 이전 상태와 비교(diff)하는 방식으로 입장/퇴장을 판단하도록 변경(`lib/realtime/messages.ts`). 단, REPLICA IDENTITY FULL 자체는 서버가 DELETE 이벤트의 filter(`room_id=eq.X`) 매칭을 하기 위해 여전히 필요함(old row에 room_id가 없으면 필터를 평가할 수 없어 이벤트가 아예 라우팅되지 않음).
+
+수정 내역은 `supabase/migrations/20260802070000_create_leave_room_function.sql` 이후 `20260802120000_restore_room_members_replica_identity_full_for_filter_matching.sql`까지 참고.
 
 **연관 PRD**: §4.4 SEARCH-01~03
 
@@ -183,7 +208,7 @@ Phase 2에서 잡은 뼈대에 실제 데이터가 다 연결된 상태에서, �
 | 0 | 인증/프로필 베이스라인 | 완료 |
 | 1 | 설계 문서 4종 | 완료 |
 | 2 | UI 뼈대 및 디자인 시스템 | 완료 |
-| 3 | 방채팅(텍스트) | 미착수 |
+| 3 | 방채팅(텍스트) | 완료 |
 | 4 | 사용자 검색 | 미착수 |
 | 5 | 랜덤채팅(텍스트) | 미착수 |
 | 6 | 이미지 전송 | 미착수 |

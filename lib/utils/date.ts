@@ -101,3 +101,13 @@ export function getRecentDates(days: number = 30): string[] {
     return date.toISOString().split("T")[0];
   });
 }
+
+/**
+ * 채팅 메시지 시각 표시 포맷 ("오후 8:30") — 서버 쿼리와 클라이언트 Realtime 훅에서 공통 사용
+ */
+export function formatChatTime(createdAt: string): string {
+  return new Date(createdAt).toLocaleTimeString("ko-KR", {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}

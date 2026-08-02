@@ -8,6 +8,51 @@ export type Database = {
   };
   public: {
     Tables: {
+      messages: {
+        Row: {
+          content: string;
+          content_type: string;
+          created_at: string;
+          id: string;
+          room_id: string | null;
+          sender_id: string;
+          session_id: string | null;
+        };
+        Insert: {
+          content: string;
+          content_type: string;
+          created_at?: string;
+          id?: string;
+          room_id?: string | null;
+          sender_id: string;
+          session_id?: string | null;
+        };
+        Update: {
+          content?: string;
+          content_type?: string;
+          created_at?: string;
+          id?: string;
+          room_id?: string | null;
+          sender_id?: string;
+          session_id?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "messages_room_id_fkey";
+            columns: ["room_id"];
+            isOneToOne: false;
+            referencedRelation: "rooms";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "messages_sender_id_fkey";
+            columns: ["sender_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       profiles: {
         Row: {
           age: number | null;
@@ -17,6 +62,8 @@ export type Database = {
           full_name: string | null;
           gender: string | null;
           id: string;
+          is_anonymous: boolean;
+          last_seen_at: string;
           role: string;
           updated_at: string | null;
           username: string | null;
@@ -30,6 +77,8 @@ export type Database = {
           full_name?: string | null;
           gender?: string | null;
           id: string;
+          is_anonymous?: boolean;
+          last_seen_at?: string;
           role?: string;
           updated_at?: string | null;
           username?: string | null;
@@ -43,6 +92,8 @@ export type Database = {
           full_name?: string | null;
           gender?: string | null;
           id?: string;
+          is_anonymous?: boolean;
+          last_seen_at?: string;
           role?: string;
           updated_at?: string | null;
           username?: string | null;
@@ -50,12 +101,144 @@ export type Database = {
         };
         Relationships: [];
       };
+      room_bans: {
+        Row: {
+          banned_at: string;
+          banned_by: string;
+          room_id: string;
+          user_id: string;
+        };
+        Insert: {
+          banned_at?: string;
+          banned_by: string;
+          room_id: string;
+          user_id: string;
+        };
+        Update: {
+          banned_at?: string;
+          banned_by?: string;
+          room_id?: string;
+          user_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "room_bans_banned_by_fkey";
+            columns: ["banned_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "room_bans_room_id_fkey";
+            columns: ["room_id"];
+            isOneToOne: false;
+            referencedRelation: "rooms";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "room_bans_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      room_members: {
+        Row: {
+          id: string;
+          joined_at: string;
+          role: string;
+          room_id: string;
+          user_id: string;
+        };
+        Insert: {
+          id?: string;
+          joined_at?: string;
+          role?: string;
+          room_id: string;
+          user_id: string;
+        };
+        Update: {
+          id?: string;
+          joined_at?: string;
+          role?: string;
+          room_id?: string;
+          user_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "room_members_room_id_fkey";
+            columns: ["room_id"];
+            isOneToOne: false;
+            referencedRelation: "rooms";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "room_members_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      rooms: {
+        Row: {
+          created_at: string;
+          id: string;
+          is_private: boolean;
+          max_members: number;
+          owner_id: string;
+          password_hash: string | null;
+          title: string;
+          updated_at: string;
+        };
+        Insert: {
+          created_at?: string;
+          id?: string;
+          is_private?: boolean;
+          max_members: number;
+          owner_id: string;
+          password_hash?: string | null;
+          title: string;
+          updated_at?: string;
+        };
+        Update: {
+          created_at?: string;
+          id?: string;
+          is_private?: boolean;
+          max_members?: number;
+          owner_id?: string;
+          password_hash?: string | null;
+          title?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "rooms_owner_id_fkey";
+            columns: ["owner_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
     };
     Views: {
       [_ in never]: never;
     };
     Functions: {
-      [_ in never]: never;
+      is_room_member: { Args: { p_room_id: string }; Returns: boolean };
+      join_room: {
+        Args: { p_password?: string; p_room_id: string };
+        Returns: undefined;
+      };
+      leave_room: { Args: { p_room_id: string }; Returns: undefined };
+      room_member_count: {
+        Args: { r: Database["public"]["Tables"]["rooms"]["Row"] };
+        Returns: number;
+      };
     };
     Enums: {
       [_ in never]: never;

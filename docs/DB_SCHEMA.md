@@ -163,6 +163,27 @@ revoke insert, update, delete on public.room_members from authenticated;
 
 참여자 추가/제거는 전부 §6의 함수를 통해서만 이루어지도록 강제해, 정원 체크·강퇴 이력 체크를 우회할 수 없게 한다.
 
+**방장 자동 등록**: 위 REVOKE로 인해 클라이언트가 직접 `room_members`에 INSERT할 수 없으므로, 방을 생성한 방장을 참여자로 등록하는 별도 경로가 필요하다. `rooms` INSERT 시 트리거로 자동 처리한다 (`handle_new_user()`와 동일한 패턴).
+
+```sql
+create or replace function public.handle_new_room()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  insert into public.room_members (room_id, user_id, role)
+  values (new.id, new.owner_id, 'owner');
+  return new;
+end;
+$$;
+
+create trigger on_room_created
+  after insert on public.rooms
+  for each row execute function public.handle_new_room();
+```
+
 ---
 
 ## 5. `room_bans`
