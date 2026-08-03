@@ -70,6 +70,7 @@ MVP의 핵심 축인 로그인 기반 방채팅을 구현한다. Phase 2에서 �
 - [x] 방 입장 (로그인 필요, 정원 초과 차단, 비밀번호 검증)
 - [x] 방채팅 화면에 텍스트 메시지 송수신 연결, Supabase Realtime 구독
 - [x] 참여자 목록 데이터 연결
+- [x] 내가 참여 중인 방 목록 조회 및 재입장
 
 **연관 PRD**: §5 ROOM-01~05, §5.1 (이미지 제외), §5.2 방채팅 완료 조건(강퇴 제외 부분)
 
@@ -88,6 +89,14 @@ MVP의 핵심 축인 로그인 기반 방채팅을 구현한다. Phase 2에서 �
 
 수정 내역은 `supabase/migrations/20260802061500_allow_anon_to_view_public_profile_fields_for_room_list.sql`, `expose_room_member_count_via_security_definer_function` 참고.
 
+**추가 개선 (2026-08-03, 메시지 전송 속도)**: "내가 보낸 메시지도 화면에 바로 안 뜬다"는 문제를 진단, 원인 2가지를 확인 후 수정:
+1. `sendRoomMessageAction`(`app/actions/messages.ts`)이 `supabase.auth.getUser()`를 호출하고 있었는데, 이는 Auth 서버에 실제 네트워크 왕복을 하는 세션 재검증 API라 지연이 컸다. `messages` INSERT는 어차피 RLS(`room_members` 참여 여부)가 최종 방어선이므로, 로그인 여부 확인과 `sender_id` 추출만 필요한 이 액션에는 로컬 JWT 서명 검증만 하는 `getClaims()`(`lib/supabase/middleware.ts`에서 이미 쓰고 있는 방식)로 충분해 교체했다.
+2. `handleSend`(`components/rooms/room-chat-view.tsx`)가 `sendRoomMessageAction`을 fire-and-forget으로 호출만 하고 로컬 state를 갱신하지 않아, 서버 액션 왕복 + DB INSERT + Realtime 전파를 다 거쳐야 화면에 보였다. `useRoomMessages`(`lib/realtime/messages.ts`)에 `sendMessage()`를 추가해 전송 즉시 임시 id로 낙관적 메시지를 붙이고, Realtime INSERT 이벤트가 돌아오면 `sender_id`+`content`로 매칭해 실제 row(진짜 id/시각)로 치환(reconcile)하도록 변경. 전송 실패 시엔 낙관적 메시지를 제거하고 에러 토스트를 띄운다.
+
+Playwright로 방채팅에 진입해 메시지 전송 시 Realtime 왕복을 기다리지 않고 즉시 화면에 표시되는 것과, 새로고침 후에도 메시지가 정상적으로 남아있는 것(실제 DB insert 성공)을 확인했다.
+
+**추가 개선 (2026-08-03, 참여 중인 방 재입장)**: "내가 들어가 있는 채팅방 목록과 재입장 방법이 없다"는 요청으로 추가. `lib/queries/rooms.ts`에 `getMyRoomList(userId)`를 추가해(`room_members!inner` embed-filter로 내가 속한 방만 조회, `getRoomList()`와 동일한 필드 구성 재사용) `/rooms` 페이지에 "전체 방"/"내가 참여중인 방" 탭(`?tab=mine`, 로그인 사용자 전용)을 추가했다. 재입장 자체는 `/rooms/[roomId]`가 이미 멤버십을 확인해 참여자면 비밀번호 재입력 없이 곧장 방채팅 화면을 보여주던 기존 로직을 그대로 활용 — 목록에서 클릭할 진입점만 새로 만들면 됐다.
+
 ---
 
 ## Phase 4 — 사용자 검색
@@ -102,6 +111,7 @@ MVP의 핵심 축인 로그인 기반 방채팅을 구현한다. Phase 2에서 �
 - [x] 방채팅 "나가기" 기능 — 방장이 나가면 방 삭제(cascade), 일반 참여자는 멤버십만 해제
 - [x] 방채팅 참여자 온라인 상태 표시 (Realtime Presence — 멤버십과 분리된 개념)
 - [x] 방채팅 참여자 입장/퇴장 실시간 반영 (참여자 목록·헤더 정원·시스템 알림 메시지, 새로고침 불필요)
+- [x] 방장이 나가서 방이 삭제됐을 때 잔류 참여자에게 실시간 안내 + 방 목록으로 자동 이동
 
 **추가 배경 (2026-08-02)**: 방채팅 사용 중 "뒤로가기를 눌러도 여전히 방에 참여 중인 상태인 게 애매하다"는 피드백으로 논의됨. 결론: "멤버십"(영구, `room_members` 행 — 메시지 기록 접근·재입장 권한 기준)과 "지금 온라인인지"(일시적, Presence 기준)는 서로 다른 개념이므로 분리해서 구현. 브라우저를 그냥 닫는 경우(나가기 버튼 미클릭)는 멤버십이 남아있는 게 의도된 동작이며, 이번에 추가한 Presence는 "온라인 N명" 표시 전용이고 멤버십/정원 계산에는 영향을 주지 않는다.
 
@@ -111,6 +121,12 @@ MVP의 핵심 축인 로그인 기반 방채팅을 구현한다. Phase 2에서 �
 3. **DELETE 이벤트의 old row가 REPLICA IDENTITY FULL이어도 클라이언트에는 기본키(`id`)만 전달됨** — "누가 나갔는지" payload만으로 특정 불가. `room_members` 변경은 `event: "*"` 단일 바인딩으로만 받고, 이벤트가 오면 참여자 목록을 재조회해 이전 상태와 비교(diff)하는 방식으로 입장/퇴장을 판단하도록 변경(`lib/realtime/messages.ts`). 단, REPLICA IDENTITY FULL 자체는 서버가 DELETE 이벤트의 filter(`room_id=eq.X`) 매칭을 하기 위해 여전히 필요함(old row에 room_id가 없으면 필터를 평가할 수 없어 이벤트가 아예 라우팅되지 않음).
 
 수정 내역은 `supabase/migrations/20260802070000_create_leave_room_function.sql` 이후 `20260802120000_restore_room_members_replica_identity_full_for_filter_matching.sql`까지 참고.
+
+**추가 개선 (2026-08-03, 방 삭제 알림 + 참여자 아이콘 정리)**: 실사용 중 발견된 개선 요청 2건을 반영:
+1. **방장이 나가서 방이 삭제됐을 때 잔류 사용자 알림**: `rooms` 테이블이 `supabase_realtime` publication에 등록된 적이 없어(위 "참여자 실시간 반영 버그 3건"과 같은 종류의 문제) 방 삭제 이벤트를 구독할 수 없었음 — `alter publication supabase_realtime add table public.rooms` 추가. `useRoomMessages`에 `room-${roomId}-deleted` 전용 채널(DELETE, `id=eq.${roomId}` 필터)을 추가해 `roomDeleted` 상태를 반환하고, `RoomChatView`가 이를 받아 배너+토스트 안내 후 입력창 비활성화, 1.8초 뒤 `/rooms`로 이동시킨다. cascade로 함께 삭제되는 나머지 참여자들의 "OOO님이 나갔습니다" 시스템 메시지 스팸은 방 삭제 시엔 생략하도록 처리.
+2. **참여자(사람 모양) 아이콘 정리**: `ChatHeader`의 참여자 목록 버튼이 PC에서도 항상 보였는데, 그 버튼이 여는 모바일용 `ParticipantList` Dialog는 `md:hidden`(768px 미만만), PC 상시 패널 `ParticipantSidePanel`은 `lg:block`(1024px 이상만)이라 **태블릿 크기(768~1024px)에서 버튼을 눌러도 아무것도 안 보이는 사각지대**가 있었음. `ParticipantSidePanel`을 `md:block`으로 맞추고 헤더 버튼엔 `md:hidden`을 추가해 PC에서는 숨김 처리, breakpoint를 `md` 기준으로 통일(`docs/DEVELOPMENT_PLAN.md` §2.5 설계와 일치).
+
+수정 내역은 `supabase/migrations/20260802130000_add_rooms_to_realtime_publication.sql` 참고.
 
 **연관 PRD**: §4.4 SEARCH-01~03
 

@@ -7,12 +7,15 @@ import { Input } from "@/components/ui/input";
 
 interface ChatInputBarProps {
   onSend: (text: string) => void;
+  disabled?: boolean;
 }
 
 /**
  * 채팅 하단 고정 입력창 — 텍스트 전송만 처리(이미지 첨부 버튼은 Phase 6에서 연결)
+ *
+ * disabled가 true면(예: 방이 삭제된 경우) 입력/전송을 모두 막는다.
  */
-export function ChatInputBar({ onSend }: ChatInputBarProps) {
+export function ChatInputBar({ onSend, disabled }: ChatInputBarProps) {
   const [value, setValue] = useState("");
 
   const handleSend = () => {
@@ -33,6 +36,7 @@ export function ChatInputBar({ onSend }: ChatInputBarProps) {
         className="rounded-full"
         value={value}
         onChange={(e) => setValue(e.target.value)}
+        disabled={disabled}
         onKeyDown={(e) => {
           if (e.key === "Enter" && !e.nativeEvent.isComposing) {
             e.preventDefault();
@@ -50,6 +54,7 @@ export function ChatInputBar({ onSend }: ChatInputBarProps) {
         className="bg-brand hover:bg-brand/90 text-brand-foreground shrink-0 rounded-full md:h-9 md:w-auto md:gap-1.5 md:px-4"
         aria-label="전송"
         onClick={handleSend}
+        disabled={disabled}
       >
         <Send size={16} />
         <span className="hidden text-sm font-medium md:inline">전송</span>

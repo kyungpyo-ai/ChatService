@@ -51,7 +51,13 @@ export function ChatHeader({
       </Button>
 
       {onOpenParticipants && (
-        <Button variant="ghost" size="icon" onClick={onOpenParticipants} aria-label="참여자 목록">
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={onOpenParticipants}
+          aria-label="참여자 목록"
+          className="md:hidden"
+        >
           <Users size={18} />
         </Button>
       )}

@@ -1,8 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { formatChatTime } from "@/lib/utils/date";
+import { sendRoomMessageAction } from "@/app/actions/messages";
+import { showError } from "@/lib/utils/toast";
 import type { ChatMessage } from "@/components/chat/chat-message-bubble";
 import type { RoomMember } from "@/lib/queries/rooms";
 
@@ -22,6 +24,14 @@ interface RoomMemberJoinRow {
 interface RoomLiveState {
   messages: ChatMessage[];
   participants: RoomMember[];
+  roomDeleted: boolean;
+  sendMessage: (content: string) => Promise<void>;
+}
+
+/** 전송 직후 낙관적으로 붙인 메시지를 Realtime INSERT 이벤트와 매칭하기 위한 대기 큐 항목 */
+interface PendingSend {
+  tempId: string;
+  content: string;
 }
 
 /**
@@ -45,7 +55,11 @@ export function useRoomMessages(
 ): RoomLiveState {
   const [messages, setMessages] = useState<ChatMessage[]>(initialMessages);
   const [participants, setParticipants] = useState<RoomMember[]>(initialParticipants);
+  const [roomDeleted, setRoomDeleted] = useState(false);
   const participantsRef = useRef<RoomMember[]>(initialParticipants);
+  const roomDeletedRef = useRef(false);
+  // 내가 보낸 메시지 중 아직 Realtime INSERT로 되돌아오지 않은 것들의 대기 큐(FIFO)
+  const pendingSendsRef = useRef<PendingSend[]>([]);
 
   useEffect(() => {
     const supabase = createClient();
@@ -72,6 +86,33 @@ export function useRoomMessages(
             const row = payload.new as MessageRow;
             const sender = participantsRef.current.find((p) => p.id === row.sender_id);
 
+            // 내가 보낸 메시지라면 낙관적으로 붙여둔 임시 항목을 실제 row로 치환(reconcile)한다.
+            if (row.sender_id === currentUserId) {
+              const pendingIndex = pendingSendsRef.current.findIndex(
+                (p) => p.content === row.content
+              );
+              if (pendingIndex !== -1) {
+                const [pending] = pendingSendsRef.current.splice(pendingIndex, 1);
+                setMessages((prev) => {
+                  if (prev.some((m) => m.id === row.id)) return prev;
+                  return prev.map((m) =>
+                    m.id === pending.tempId
+                      ? {
+                          id: row.id,
+                          senderId: row.sender_id,
+                          senderName: sender?.nickname ?? "익명",
+                          senderAvatarUrl: sender?.avatarUrl,
+                          content: row.content_type === "text" ? row.content : "",
+                          imageUrl: row.content_type === "image" ? row.content : null,
+                          createdAt: formatChatTime(row.created_at),
+                        }
+                      : m
+                  );
+                });
+                return;
+              }
+            }
+
             setMessages((prev) => {
               if (prev.some((m) => m.id === row.id)) return prev;
               return [
@@ -87,6 +128,18 @@ export function useRoomMessages(
                 },
               ];
             });
+          }
+        )
+        .subscribe();
+
+      const roomDeletedChannel = supabase
+        .channel(`room-${roomId}-deleted`)
+        .on(
+          "postgres_changes",
+          { event: "DELETE", schema: "public", table: "rooms", filter: `id=eq.${roomId}` },
+          () => {
+            roomDeletedRef.current = true;
+            setRoomDeleted(true);
           }
         )
         .subscribe();
@@ -140,6 +193,10 @@ export function useRoomMessages(
             }
             for (const p of left) {
               if (p.id === currentUserId) continue;
+              // 방장이 나가 방 자체가 삭제된 경우엔 cascade로 나머지 참여자들의 room_members 행도
+              // 한꺼번에 삭제되어 "OOO님이 나갔습니다" 메시지가 우르르 쌓이므로 생략한다.
+              // 대신 room-${roomId}-deleted 채널에서 받은 방 삭제 안내만 보여준다.
+              if (roomDeletedRef.current) continue;
               systemMessages.push({
                 id: `leave-${p.id}-${now}`,
                 senderId: p.id,
@@ -157,7 +214,7 @@ export function useRoomMessages(
         )
         .subscribe();
 
-      channels = [messageChannel, memberChangeChannel];
+      channels = [messageChannel, roomDeletedChannel, memberChangeChannel];
     })();
 
     return () => {
@@ -166,5 +223,36 @@ export function useRoomMessages(
     };
   }, [roomId, currentUserId]);
 
-  return { messages, participants };
+  const sendMessage = useCallback(
+    async (content: string) => {
+      const trimmed = content.trim();
+      if (!trimmed) return;
+
+      const tempId = `temp-${crypto.randomUUID()}`;
+      const self = participantsRef.current.find((p) => p.id === currentUserId);
+
+      const optimisticMessage: ChatMessage = {
+        id: tempId,
+        senderId: currentUserId,
+        senderName: self?.nickname ?? "나",
+        senderAvatarUrl: self?.avatarUrl,
+        content: trimmed,
+        createdAt: formatChatTime(new Date().toISOString()),
+      };
+
+      pendingSendsRef.current.push({ tempId, content: trimmed });
+      setMessages((prev) => [...prev, optimisticMessage]);
+
+      const result = await sendRoomMessageAction(roomId, trimmed);
+
+      if (!result.success) {
+        pendingSendsRef.current = pendingSendsRef.current.filter((p) => p.tempId !== tempId);
+        setMessages((prev) => prev.filter((m) => m.id !== tempId));
+        showError(result.message);
+      }
+    },
+    [roomId, currentUserId]
+  );
+
+  return { messages, participants, roomDeleted, sendMessage };
 }

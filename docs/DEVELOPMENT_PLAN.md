@@ -182,16 +182,17 @@ create trigger on_room_created
 | 파일 | 상태 | 설명 |
 |---|---|---|
 | `lib/schemas/room.ts` | 신규 | 방 생성 zod 스키마 — `title`(1~50자), `maxMembers`(2~50, select라 문자열로 받아 숫자 검증), `isPrivate`(boolean), `password`(선택, `isPrivate`이면 4~20자 필수 — `superRefine`으로 조건부 검증. `lib/schemas/profile.ts`에서 확립한 "coerce 금지, 문자열 유지 후 서버에서 변환" 패턴 재사용) |
-| `lib/queries/rooms.ts` | 신규 | `getRoomList()`, `getRoomDetail(roomId)`, `getRoomMembers(roomId)`, `getMyRoomMembership(roomId)` — Server Component 전용 읽기 함수, `lib/queries/profile.ts`와 동일하게 `createClient()`(server) 사용 |
+| `lib/queries/rooms.ts` | 신규 | `getRoomList()`, `getRoomDetail(roomId)`, `getRoomMembers(roomId)`, `getMyRoomMembership(roomId)` — Server Component 전용 읽기 함수, `lib/queries/profile.ts`와 동일하게 `createClient()`(server) 사용. **2026-08-03 추가**: `getMyRoomList(userId)` — `room_members!inner` embed-filter로 내가 속한 방만 조회, `getRoomList()`와 동일한 필드 구성 재사용 |
 | `app/actions/rooms.ts` | 신규 | `createRoomAction`, `joinRoomAction` 서버 액션. `createRoomAction`: 로그인 확인(+ `is_anonymous`면 거부, ROOM-02) → zod 검증 → `isPrivate`면 `bcryptjs.hash()` → `rooms` INSERT(트리거가 owner를 room_members에 자동 등록) → 생성된 방으로 redirect. `joinRoomAction`: 로그인 확인 → `supabase.rpc("join_room", {...})` 호출 → 성공 시 redirect, 실패 사유(정원 초과/비밀번호 오류/강퇴 이력)를 폼 상태로 반환 |
-| `app/actions/messages.ts` | 신규 | `sendRoomMessageAction(roomId, content)` — 로그인 확인 → `messages` INSERT(`content_type: "text"`), 권한은 §7 RLS(`room_members` 참여 여부)가 최종 방어선이므로 서버 액션은 얇게 유지 |
-| `lib/realtime/messages.ts` | 신규 | `useRoomMessages(roomId, initialMessages)` 클라이언트 훅 — mount 시 `supabase.channel(\`room-${roomId}-messages\`).on("postgres_changes", { event: "INSERT", schema: "public", table: "messages", filter: \`room_id=eq.${roomId}\` }, ...).subscribe()`, unmount 시 `removeChannel`. RLS가 적용된 상태로 구독되므로 비참여자는 애초에 이벤트를 받지 못함(§ARCHITECTURE 7) |
-| `app/(main)/rooms/page.tsx` | 변경 | 정적 컴포넌트 → async Server Component, `mockRooms` 대신 `getRoomList()` |
-| `app/(main)/rooms/new/page.tsx` | 변경 | 정적 마크업 폼 → Client Component, `react-hook-form` + `zod` + `createRoomAction` 연결(기존 `setup-profile-form.tsx` 패턴 재사용). 비로그인 접근 시 안내 문구 + 로그인 유도(미들웨어는 `/rooms`를 공개 경로로 유지하므로 로그인 차단은 액션/화면 레벨에서 처리, §ARCHITECTURE 3) |
+| `app/actions/messages.ts` | 신규 | `sendRoomMessageAction(roomId, content)` — 로그인 확인 → `messages` INSERT(`content_type: "text"`), 권한은 §7 RLS(`room_members` 참여 여부)가 최종 방어선이므로 서버 액션은 얇게 유지. **2026-08-03 개선**: 로그인 확인에 쓰던 `auth.getUser()`(Auth 서버 네트워크 왕복)를 `auth.getClaims()`(로컬 JWT 서명 검증)로 교체해 메시지 전송 지연 축소(ROADMAP.md Phase 3 "추가 개선" 참고) |
+| `lib/realtime/messages.ts` | 신규 | `useRoomMessages(roomId, initialMessages)` 클라이언트 훅 — mount 시 `supabase.channel(\`room-${roomId}-messages\`).on("postgres_changes", { event: "INSERT", schema: "public", table: "messages", filter: \`room_id=eq.${roomId}\` }, ...).subscribe()`, unmount 시 `removeChannel`. RLS가 적용된 상태로 구독되므로 비참여자는 애초에 이벤트를 받지 못함(§ARCHITECTURE 7). Phase 4에서 참여자 실시간 변동까지 함께 관리하도록 재작성(§4.2). **2026-08-03 개선**: `sendMessage(content)`를 추가해 전송 즉시 임시 id로 낙관적 메시지를 붙이고, Realtime INSERT 이벤트가 오면 `sender_id`+`content`로 매칭해 실제 row로 치환(reconcile) — 내가 보낸 메시지도 Realtime 왕복을 기다리지 않고 바로 보이게 함(ROADMAP.md Phase 3 "추가 개선" 참고) |
+| `app/(main)/rooms/page.tsx` | 변경 | 정적 컴포넌트 → async Server Component, `mockRooms` 대신 `getRoomList()`. **2026-08-03 추가**: `?tab=mine` 쿼리 기반 "전체 방"/"내가 참여중인 방" 탭 추가(로그인 사용자에게만 노출), 선택 시 `getMyRoomList()` 호출 |
+| `app/(main)/rooms/new/page.tsx` | 변경 | async Server Component로 유지하되 `supabase.auth.getUser()`로 로그인 확인만 수행 — 비로그인이면 안내 문구 + 로그인 유도 버튼만 렌더링(미들웨어는 `/rooms`를 공개 경로로 유지하므로 로그인 차단은 화면 레벨에서 처리, §ARCHITECTURE 3), 로그인 상태면 폼 자체는 아래 `create-room-form.tsx`에 위임 |
+| `components/rooms/create-room-form.tsx` | 신규 | 정적 마크업 폼 → Client Component, `react-hook-form` + `zod` + `createRoomAction` 연결(기존 `setup-profile-form.tsx` 패턴 재사용) |
 | `app/(main)/rooms/[roomId]/page.tsx` | 변경 | async Server Component. `getRoomDetail` + `getMyRoomMembership` 조회 → 참여자가 아니면 `RoomJoinView`(입장하기 화면, 비밀번호 입력 포함)를, 참여자면 `RoomChatView`(+ 초기 메시지·참여자 목록)를 렌더링 |
 | `components/rooms/room-join-view.tsx` | 신규 | 미참여 사용자용 "입장하기" 화면 — 방 제목/인원 표시, 비공개방이면 비밀번호 입력란, `joinRoomAction` 연결, 게스트는 로그인 유도 문구만 표시(방 목록·미리보기는 ROOM-01에 따라 게스트도 조회 가능) |
-| `components/rooms/room-chat-view.tsx` | 변경 | `messages` prop(정적 배열) 대신 `useRoomMessages(roomId, initialMessages)` 사용. `ChatInputBar`에 `onSend` 콜백을 연결해 `sendRoomMessageAction` 호출 |
-| `components/chat/chat-input-bar.tsx` | 변경 | 현재 마크업 전용 → `onSend: (text: string) => void` prop 추가, 전송 후 인풋 초기화 |
+| `components/rooms/room-chat-view.tsx` | 변경 | `messages` prop(정적 배열) 대신 `useRoomMessages(roomId, initialMessages)` 사용. `ChatInputBar`에 `onSend` 콜백을 연결. **2026-08-03 개선**: `sendRoomMessageAction`을 직접 호출하던 것을 훅이 제공하는 `sendMessage()`(낙관적 UI 포함)로 교체 |
+| `components/chat/chat-input-bar.tsx` | 변경 | 현재 마크업 전용 → `onSend: (text: string) => void` prop 추가, 전송 후 인풋 초기화. **2026-08-03 추가**: `disabled?: boolean` prop 추가 — 방 삭제 시(`roomDeleted`) 입력/전송 비활성화 |
 | `components/rooms/participant-list.tsx` | 변경 | `MockParticipant` 타입을 실제 `room_members` + `profiles` 조인 결과 타입(`RoomMember`, `lib/queries/rooms.ts`에서 export)으로 교체 |
 | `components/rooms/room-card.tsx` | 변경 | prop 타입을 `MockRoom` → `getRoomList()` 반환 타입으로 교체 (필드 자체는 이미 Phase 2에서 실사용 형태로 맞춰둠 — 아이콘/설명 필드 없음) |
 | `lib/mock/rooms.ts` | 삭제 | 실데이터 연결 완료 후 제거 |
@@ -227,6 +228,7 @@ create trigger on_room_created
 | `20260802070000_create_leave_room_function.sql` | `leave_room(p_room_id uuid)` SECURITY DEFINER 함수. 방장이 나가면 `rooms` 행 삭제(→ `room_members`/`messages`가 on delete cascade로 함께 정리됨), 일반 참여자면 자신의 `room_members` 행만 삭제. `join_room()`과 동일하게 `authenticated`에게만 EXECUTE 부여 |
 | `20260802100000_add_room_members_to_realtime_publication.sql` | `room_members`가 `supabase_realtime` publication에 등록된 적이 없어 postgres_changes 구독이 서버에 전혀 등록되지 않던 문제 수정. 참여자 입장/퇴장 실시간 반영(§4.2)의 진짜 원인이었음 |
 | `20260802120000_restore_room_members_replica_identity_full_for_filter_matching.sql` | `room_members` REPLICA IDENTITY FULL. DELETE 이벤트의 old row에 `room_id`가 없으면 서버가 filter(`room_id=eq.X`) 매칭 자체를 못 해 이벤트가 라우팅되지 않는다 — 클라이언트로 오는 payload.old는 결국 기본키만 오지만, 서버 내부 필터 평가를 위해 FULL이 필요함 |
+| `20260802130000_add_rooms_to_realtime_publication.sql` | (2026-08-03 추가) `rooms` 테이블이 `supabase_realtime` publication에 등록된 적이 없어 방 삭제(DELETE) 이벤트를 구독할 수 없던 문제 수정. REPLICA IDENTITY는 기본값(PK)으로 충분 — `id=eq.${roomId}` 필터 매칭에 PK만 있으면 됨 |
 
 Realtime Presence는 DB 테이블이 아니라 각 클라이언트가 채널에 접속해있는 동안만 유지되는 인메모리 상태라 별도 마이그레이션이 필요 없다.
 
@@ -236,11 +238,11 @@ Realtime Presence는 DB 테이블이 아니라 각 클라이언트가 채널에 
 |---|---|---|
 | `app/actions/rooms.ts` | 변경 | `leaveRoomAction(roomId)` 추가. 폼이 아닌 클릭 핸들러에서 직접 호출되므로 `redirect()`는 쓰지 않고 성공 여부(`ActionResult`)만 반환 — 클라이언트에서 `router.push("/rooms")` 처리 |
 | `lib/realtime/presence.ts` | 신규 | `useRoomPresence(roomId, userId): Set<string>` — `room-${roomId}-presence` 채널을 구독해 `track()`으로 자신의 접속 상태를 알리고, `presence` `sync` 이벤트로 현재 온라인인 user id 집합을 반환 |
-| `lib/realtime/messages.ts` | 재작성 | `useRoomMessages`가 메시지뿐 아니라 참여자 실시간 변동까지 함께 관리하도록 확장(`{ messages, participants }` 반환). **채널당 postgres_changes 바인딩 1개만 등록 가능**하다는 이 프로젝트 Realtime의 제약(§4.2 발견분) 때문에 메시지 채널과 참여자 변동 채널을 분리했고, 참여자 변동은 `event:"*"` 단일 바인딩으로 받아 매번 참여자 목록을 재조회해 이전 상태와 diff하는 방식으로 입장/퇴장을 판단(발신자 id로 payload.old를 신뢰할 수 없어서). 입장/퇴장 시 `isSystemNotice: true`인 `ChatMessage`(기존 타입에 이미 있던 필드)를 채팅 목록에 추가 |
+| `lib/realtime/messages.ts` | 재작성 | `useRoomMessages`가 메시지뿐 아니라 참여자 실시간 변동까지 함께 관리하도록 확장(`{ messages, participants }` 반환). **채널당 postgres_changes 바인딩 1개만 등록 가능**하다는 이 프로젝트 Realtime의 제약(§4.2 발견분) 때문에 메시지 채널과 참여자 변동 채널을 분리했고, 참여자 변동은 `event:"*"` 단일 바인딩으로 받아 매번 참여자 목록을 재조회해 이전 상태와 diff하는 방식으로 입장/퇴장을 판단(발신자 id로 payload.old를 신뢰할 수 없어서). 입장/퇴장 시 `isSystemNotice: true`인 `ChatMessage`(기존 타입에 이미 있던 필드)를 채팅 목록에 추가. **2026-08-03 추가**: `room-${roomId}-deleted` 전용 채널(DELETE, `id=eq.${roomId}` 필터)을 추가해 `roomDeleted` 상태 반환 — 방장이 나가 방이 삭제되면 감지. 이 상태일 땐 cascade로 함께 삭제되는 나머지 참여자들의 "OOO님이 나갔습니다" 시스템 메시지 생성을 생략 |
 | `components/rooms/leave-room-dialog.tsx` | 신규 | 나가기 확인 다이얼로그. 방장이면 "방이 삭제되고 대화 내용이 사라진다"는 경고 문구로 분기 |
-| `components/chat/chat-header.tsx` | 변경 | `onLeave`/`leaveLabel` prop 추가 — 전달되면 "더보기" 아이콘 버튼 대신 "나가기" 텍스트 버튼이 곧바로 노출됨(드롭다운에 숨기지 않음). 랜덤채팅 등 `onLeave`를 안 쓰는 화면은 기존과 동일하게 동작 |
-| `components/rooms/participant-list.tsx` | 변경 | `onlineUserIds?: Set<string>` prop 추가 — 참여자 아바타에 온라인 초록 점 표시, PC 사이드패널 헤더에 "참여자 n명 · 온라인 m명" 표시 |
-| `components/rooms/room-chat-view.tsx` | 변경 | `useRoomMessages`가 반환하는 실시간 `participants`를 참여자 패널/헤더 정원/방장 판별에 그대로 사용(서버가 내려준 정적 prop 대신). `useRoomPresence` 훅 연결, 나가기 다이얼로그 상태 관리 및 `leaveRoomAction` 호출 후 라우팅 |
+| `components/chat/chat-header.tsx` | 변경 | `onLeave`/`leaveLabel` prop 추가 — 전달되면 "더보기" 아이콘 버튼 대신 "나가기" 텍스트 버튼이 곧바로 노출됨(드롭다운에 숨기지 않음). 랜덤채팅 등 `onLeave`를 안 쓰는 화면은 기존과 동일하게 동작. **2026-08-03 수정**: `onOpenParticipants` 버튼에 `md:hidden` 추가 — PC(≥md)는 `ParticipantSidePanel`이 상시 노출되므로 헤더 버튼은 모바일 전용으로 숨김 |
+| `components/rooms/participant-list.tsx` | 변경 | `onlineUserIds?: Set<string>` prop 추가 — 참여자 아바타에 온라인 초록 점 표시, PC 사이드패널 헤더에 "참여자 n명 · 온라인 m명" 표시. **2026-08-03 수정**: `ParticipantSidePanel`의 breakpoint를 `lg:block` → `md:block`으로 변경 — 기존엔 모바일 Dialog(`md:hidden`)와 PC 패널(`lg:block`) 기준이 어긋나 태블릿(768~1024px)에서 참여자 목록을 볼 방법이 없는 사각지대가 있었음, `docs/DEVELOPMENT_PLAN.md` §2.5의 `md` 기준과 통일 |
+| `components/rooms/room-chat-view.tsx` | 변경 | `useRoomMessages`가 반환하는 실시간 `participants`를 참여자 패널/헤더 정원/방장 판별에 그대로 사용(서버가 내려준 정적 prop 대신). `useRoomPresence` 훅 연결, 나가기 다이얼로그 상태 관리 및 `leaveRoomAction` 호출 후 라우팅. **2026-08-03 추가**: `roomDeleted`가 true가 되면 배너+토스트 안내, `ChatInputBar`를 `disabled`로 전환, 1.8초 후 `/rooms`로 리다이렉트 |
 
 ### 4.3 완료 조건 및 검증 (완료)
 

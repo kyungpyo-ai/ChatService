@@ -83,6 +83,40 @@ export async function getRoomList(): Promise<RoomListItem[]> {
 }
 
 /**
+ * 내가 참여 중인 방 목록 조회 — room_members에 내가 속한 방만 필터링 (embed-filter 패턴).
+ * getRoomList()와 동일한 필드 구성을 재사용하고, 최근 참여 순(방 생성일 desc)으로 정렬한다.
+ */
+export async function getMyRoomList(userId: string): Promise<RoomListItem[]> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from("rooms")
+    .select(
+      "id, title, max_members, is_private, created_at, owner:profiles!rooms_owner_id_fkey(username, gender, age), room_member_count, room_members!inner(user_id)"
+    )
+    .eq("room_members.user_id", userId)
+    .order("created_at", { ascending: false });
+
+  if (error || !data) {
+    return [];
+  }
+
+  return (data as unknown as RoomListRow[])
+    .filter((room) => room.owner !== null)
+    .map((room) => ({
+      id: room.id,
+      title: room.title,
+      ownerNickname: room.owner!.username ?? "익명",
+      ownerGender: (room.owner!.gender ?? "male") as "male" | "female",
+      ownerAge: room.owner!.age ?? 0,
+      memberCount: room.room_member_count,
+      maxMembers: room.max_members,
+      isPrivate: room.is_private,
+      createdAt: room.created_at,
+    }));
+}
+
+/**
  * 방 상세 조회 — 방채팅/입장하기 화면 공통으로 사용
  */
 export async function getRoomDetail(roomId: string): Promise<RoomDetail | null> {

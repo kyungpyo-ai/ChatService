@@ -66,7 +66,7 @@ export function ParticipantSidePanel({
   onlineUserIds?: Set<string>;
 }) {
   return (
-    <aside className="bg-surface hidden w-64 shrink-0 border-l p-3 lg:block">
+    <aside className="bg-surface hidden w-64 shrink-0 border-l p-3 md:block">
       <p className="text-muted-foreground px-1 pb-2 text-xs font-semibold">
         참여자 {participants.length}명
         {onlineUserIds && <span className="text-green-600"> · 온라인 {onlineUserIds.size}명</span>}

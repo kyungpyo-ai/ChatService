@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ChatHeader } from "@/components/chat/chat-header";
 import { PinnedNoticeBar } from "@/components/chat/pinned-notice-bar";
@@ -10,9 +10,8 @@ import { ParticipantList, ParticipantSidePanel } from "@/components/rooms/partic
 import { LeaveRoomDialog } from "@/components/rooms/leave-room-dialog";
 import { useRoomMessages } from "@/lib/realtime/messages";
 import { useRoomPresence } from "@/lib/realtime/presence";
-import { sendRoomMessageAction } from "@/app/actions/messages";
 import { leaveRoomAction } from "@/app/actions/rooms";
-import { showError } from "@/lib/utils/toast";
+import { showError, showInfo } from "@/lib/utils/toast";
 import type { RoomMember } from "@/lib/queries/rooms";
 
 interface RoomChatViewProps {
@@ -38,7 +37,7 @@ export function RoomChatView({
   const router = useRouter();
   const [participantsOpen, setParticipantsOpen] = useState(false);
   const [leaveDialogOpen, setLeaveDialogOpen] = useState(false);
-  const { messages, participants } = useRoomMessages(
+  const { messages, participants, roomDeleted, sendMessage } = useRoomMessages(
     roomId,
     initialMessages,
     initialParticipants,
@@ -48,8 +47,18 @@ export function RoomChatView({
   const isOwner = participants.some((p) => p.id === currentUserId && p.isOwner);
   const memberCount = participants.length;
 
+  // 방장이 나가서 방이 삭제되면(leave_room 함수가 rooms 행을 cascade 삭제) 잔류 사용자에게
+  // 안내하고 잠시 후 방 목록으로 돌려보낸다.
+  useEffect(() => {
+    if (!roomDeleted) return;
+    showInfo("방장이 나가서 방이 삭제되었습니다.");
+    const timer = setTimeout(() => router.push("/rooms"), 1800);
+    return () => clearTimeout(timer);
+  }, [roomDeleted, router]);
+
   const handleSend = (text: string) => {
-    void sendRoomMessageAction(roomId, text);
+    if (roomDeleted) return;
+    void sendMessage(text);
   };
 
   const handleLeave = async () => {
@@ -75,6 +84,12 @@ export function RoomChatView({
         />
         <PinnedNoticeBar notice={notice} />
 
+        {roomDeleted && (
+          <div className="bg-destructive/10 text-destructive px-4 py-2 text-center text-sm font-medium">
+            방장이 나가서 방이 삭제되었습니다. 잠시 후 방 목록으로 이동합니다.
+          </div>
+        )}
+
         <div className="flex-1 space-y-4 overflow-y-auto p-4">
           {messages.map((message) => (
             <ChatMessageBubble
@@ -85,7 +100,7 @@ export function RoomChatView({
           ))}
         </div>
 
-        <ChatInputBar onSend={handleSend} />
+        <ChatInputBar onSend={handleSend} disabled={roomDeleted} />
       </div>
 
       <ParticipantSidePanel participants={participants} onlineUserIds={onlineUserIds} />
