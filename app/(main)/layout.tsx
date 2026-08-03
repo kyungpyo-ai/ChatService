@@ -3,6 +3,7 @@ import { getUserProfile } from "@/lib/queries/profile";
 import { AppHeader } from "@/components/layout/app-header";
 import { BottomNav } from "@/components/layout/bottom-nav";
 import { SidebarNav } from "@/components/layout/sidebar-nav";
+import { HeartbeatProvider } from "@/components/layout/heartbeat-provider";
 
 /**
  * (main) route group 공용 레이아웃 — AppHeader(모바일) + BottomNav(모바일) / SidebarNav(PC)
@@ -18,6 +19,7 @@ export default async function MainLayout({ children }: { children: React.ReactNo
 
   return (
     <div className="bg-surface-muted min-h-screen">
+      <HeartbeatProvider userId={user?.id ?? null} />
       <AppHeader
         isLoggedIn={isLoggedIn}
         avatarUrl={profile?.avatar_url}

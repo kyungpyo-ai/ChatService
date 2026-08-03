@@ -103,11 +103,11 @@ Playwright로 방채팅에 진입해 메시지 전송 시 Realtime 왕복을 기
 
 `profiles`만으로 구현 가능해 방채팅/랜덤채팅과 독립적으로 진행할 수 있는 기능이다. Phase 2의 사용자 검색 화면에 데이터를 연결한다.
 
-- [ ] DB: `profiles`에 `last_seen_at` 컬럼 추가 (온라인 여부 판단용)
-- [ ] 로그인 세션 동안 주기적으로 `last_seen_at` 갱신 (heartbeat)
-- [ ] 닉네임 부분 검색 쿼리 (게스트/익명 계정 제외)
-- [ ] 검색 결과에 온라인 여부(예: 최근 N분 이내 `last_seen_at`) 표시
-- [ ] 검색 결과에서 프로필 조회 연결
+- [x] DB: `profiles`에 `last_seen_at` 컬럼 추가 (온라인 여부 판단용) — Phase 3 착수 시 `20260726125413_add_chat_columns_to_profiles.sql`로 이미 적용됨
+- [x] 로그인 세션 동안 주기적으로 `last_seen_at` 갱신 (heartbeat)
+- [x] 닉네임 부분 검색 쿼리 (게스트/익명 계정 제외)
+- [x] 검색 결과에 온라인 여부(예: 최근 N분 이내 `last_seen_at`) 표시
+- [x] 검색 결과에서 프로필 조회 연결
 - [x] 방채팅 "나가기" 기능 — 방장이 나가면 방 삭제(cascade), 일반 참여자는 멤버십만 해제
 - [x] 방채팅 참여자 온라인 상태 표시 (Realtime Presence — 멤버십과 분리된 개념)
 - [x] 방채팅 참여자 입장/퇴장 실시간 반영 (참여자 목록·헤더 정원·시스템 알림 메시지, 새로고침 불필요)
@@ -128,9 +128,13 @@ Playwright로 방채팅에 진입해 메시지 전송 시 Realtime 왕복을 기
 
 수정 내역은 `supabase/migrations/20260802130000_add_rooms_to_realtime_publication.sql` 참고.
 
+**사용자 검색 구현 완료 (2026-08-03)**: `docs/DEVELOPMENT_PLAN.md` §4.4 계획대로 구현. `updateLastSeenAction()` + `useHeartbeat` 훅(mount 즉시 1회 + visible 상태 60초 간격, `app/(main)/layout.tsx`에 공용 마운트)으로 하트비트를 구현하고, `searchUsers()`(닉네임 ilike + `is_anonymous=false` + 본인 제외, `profiles_username_trgm_idx` 활용)와 `searchUsersAction()`(getClaims 로그인 재검증)으로 검색을 연결했다. 검색 결과 클릭 시 추가 쿼리 없이 프로필 다이얼로그(닉네임/성별/나이/온라인 여부)를 표시하고, 최근 검색어는 서버 저장 없이 `localStorage`로 관리한다.
+
+Playwright + Supabase MCP로 실제 검증: 로그인 사용자가 "kyu"로 검색해 "kyu275" 결과 노출, 하트비트로 `last_seen_at`이 페이지 로드 즉시 갱신됨을 SQL로 확인, `last_seen_at`을 30초 전으로 바꾸면 "오프라인"→"현재 온라인"으로 즉시 전환됨을 확인, 비로그인 상태로 `/search` 요청 시 미들웨어가 `/auth/login?redirect=/search`로 리다이렉트함을 확인, "전체 삭제" 클릭 시 최근 검색 영역이 사라짐을 확인.
+
 **연관 PRD**: §4.4 SEARCH-01~03
 
-**완료 조건**: 로그인 사용자가 닉네임 일부로 회원을 찾고 온라인 여부를 확인할 수 있으며, 게스트는 검색에서 제외된다.
+**완료 조건**: 로그인 사용자가 닉네임 일부로 회원을 찾고 온라인 여부를 확인할 수 있으며, 게스트는 검색에서 제외된다. (검증 완료)
 
 ---
 
@@ -225,7 +229,7 @@ Phase 2에서 잡은 뼈대에 실제 데이터가 다 연결된 상태에서, �
 | 1 | 설계 문서 4종 | 완료 |
 | 2 | UI 뼈대 및 디자인 시스템 | 완료 |
 | 3 | 방채팅(텍스트) | 완료 |
-| 4 | 사용자 검색 | 미착수 |
+| 4 | 사용자 검색 | 완료 |
 | 5 | 랜덤채팅(텍스트) | 미착수 |
 | 6 | 이미지 전송 | 미착수 |
 | 7 | 권한 검증/계정 관리 | 미착수 |

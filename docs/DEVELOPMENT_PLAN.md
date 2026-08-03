@@ -2,8 +2,8 @@
 
 > 이 문서는 `ROADMAP.md`의 Phase를 실제 파일/컴포넌트/함수 단위 태스크로 분해한 것이다. **바로 착수하는 Phase만 상세히 작성**하고, 이후 Phase는 착수 직전에 이 문서를 갱신해 상세화한다 — 먼 미래 Phase를 지금 촘촘히 계획해봐야 실제 착수 시점에 요구사항/설계가 바뀔 가능성이 크기 때문이다.
 
-- 상세 작성됨: **Phase 2 — UI 뼈대 및 디자인 시스템**, **Phase 3 — 방채팅(텍스트)**, **Phase 4 — 방 나가기/온라인 상태(구현 완료분만 상세, 사용자 검색은 개요만)**
-- 개요만 있음: Phase 4의 사용자 검색 부분, Phase 5~10 (해당 Phase 착수 시 이 문서에 상세 추가)
+- 상세 작성됨: **Phase 2 — UI 뼈대 및 디자인 시스템**, **Phase 3 — 방채팅(텍스트)**, **Phase 4 — 방 나가기/온라인 상태/사용자 검색**
+- 개요만 있음: Phase 5~10 (해당 Phase 착수 시 이 문서에 상세 추가)
 
 ---
 
@@ -210,7 +210,7 @@ create trigger on_room_created
 
 **연관 PRD**: §5 ROOM-01~05, §5.1(이미지 제외), §5.2 방채팅 완료 조건(강퇴 제외 부분) — `ROADMAP.md` Phase 3과 동일
 
-## Phase 4 — 방 나가기 / 온라인 상태 (상세, 구현 완료) + 사용자 검색 (개요만)
+## Phase 4 — 방 나가기 / 온라인 상태 / 사용자 검색 (상세)
 
 ### 4.0 배경
 
@@ -252,9 +252,101 @@ Realtime Presence는 DB 테이블이 아니라 각 클라이언트가 채널에 
 - 실제 두 번째 프로필(`kyu275`)을 DB에서 직접 입장/퇴장시켜, 새로고침 없이 "OOO님이 입장했습니다"/"나갔습니다" 시스템 메시지와 참여자 수·헤더 정원이 즉시 갱신됨을 확인
 - 이 과정에서 Node 스크립트로 Realtime 인프라 제약 3건을 격리 재현·확인함(§ROADMAP Phase 4 "추가 검증" 참고): 채널당 바인딩 1개 제한, `room_members`의 publication 미등록, DELETE old row의 payload 축약
 
-### 4.4 사용자 검색 — 개요만
+### 4.4 사용자 검색 (상세)
 
-`ROADMAP.md` Phase 4 참고. 착수 시 `last_seen_at` 하트비트 구현 방식(클라이언트 인터벌 vs 방문 이벤트 기반), 검색 서버 액션/쿼리 파일을 상세화한다.
+#### 4.4.0 범위와 전제
+
+`is_anonymous`/`last_seen_at` 컬럼과 `pg_trgm` 검색 인덱스(`profiles_username_trgm_idx`)는 **Phase 3 착수 시점에 이미 마이그레이션 적용 완료**된 상태다(`supabase/migrations/20260726125413_add_chat_columns_to_profiles.sql`, `DB_SCHEMA.md` §1). `ROADMAP.md` Phase 4 체크리스트의 "DB: `last_seen_at` 컬럼 추가" 항목은 실제로는 완료 상태이며 체크 표기만 갱신하면 된다 — 이번 Phase에서 신규 마이그레이션은 필요 없다.
+
+온라인 판단 방식은 `ARCHITECTURE.md` §5.2에서 이미 결정된 대로 하트비트(`last_seen_at`) + 조회 시점 임계값 비교(2분) 방식을 그대로 따른다(별도 Presence/배치 불필요).
+
+| 제외 항목 | 이유 |
+|---|---|
+| 검색어 서버 영속(최근 검색 기록을 DB에 저장) | PRD SEARCH-01~03에 서버 저장 요구 없음. 브라우저 `localStorage` 전용으로 충분 |
+| 다른 회원과의 DM/쪽지 | PRD §7.4, `ROADMAP.md` Phase 10(범위 외) |
+| 온라인 사용자만 필터링하는 옵션 UI | PRD/ROADMAP 요구사항에 없음(정렬·필터는 닉네임 검색 결과 전체 노출로 충분) |
+
+#### 4.4.1 신규/변경 파일
+
+| 파일 | 상태 | 설명 |
+|---|---|---|
+| `app/actions/heartbeat.ts` | 신규 | `updateLastSeenAction()` — `auth.getClaims()`로 로그인 확인(비로그인이면 조용히 반환, 에러 아님) 후 `profiles.last_seen_at = now()` UPDATE. RLS는 기존 "본인 프로필 수정"(`auth.uid() = id`) 정책을 그대로 재사용하므로 별도 정책 불필요(`ARCHITECTURE.md` §5.2). `sendRoomMessageAction`과 동일하게 `getClaims()`를 써서 네트워크 왕복을 줄인다 |
+| `lib/hooks/use-heartbeat.ts` | 신규 | 클라이언트 훅. mount 시 `updateLastSeenAction()` 즉시 1회 호출 + `document.visibilityState === "visible"`인 동안만 60초 간격으로 재호출. `visibilitychange` 리스너로 탭이 백그라운드로 가면 인터벌 정지, 다시 보이면 즉시 1회 갱신 후 재시작(불필요한 백그라운드 탭 갱신 방지) |
+| `components/layout/heartbeat-provider.tsx` | 신규 | `"use client"`, UI 없는 로직 전용 wrapper. `userId: string \| null` prop을 받아 `null`이 아닐 때만 `use-heartbeat` 훅 호출 |
+| `app/(main)/layout.tsx` | 변경 | 로그인 사용자(`supabase.auth.getUser()`)의 id를 `<HeartbeatProvider userId={...} />`에 전달해 전체 화면 공통으로 마운트 — 검색 화면에 있지 않아도 로그인 세션 동안 온라인 상태가 유지되어야 하므로 검색 페이지 단독이 아닌 공용 레이아웃에 배치 |
+| `lib/queries/users.ts` | 신규 | `searchUsers(query, currentUserId)` — `profiles`에서 `is_anonymous = false`, 본인 제외(`neq("id", currentUserId)`), `username ilike '%query%'`(trgm 인덱스 활용) 조건으로 최대 30건 조회, `last_seen_at` 기준 `isOnline` 계산까지 포함해 반환. §4.4.2 참고 |
+| `app/actions/users.ts` | 신규 | `searchUsersAction(query: string): Promise<SearchUserResult[]>` — `auth.getClaims()`로 로그인 확인(비로그인이면 빈 배열, SEARCH-01) → 검색어 trim 후 2자 미만이면 빈 배열 반환(과도한 broad-match 방지) → `searchUsers()` 위임 |
+| `components/search/search-input.tsx` | 변경 | 정적 마크업 → Client Component. `value`/`onChange` controlled prop으로 변경(폼 제출 없이 입력 즉시 반영, 디바운스는 상위 패널에서 처리) |
+| `components/search/user-search-panel.tsx` | 신규 | Client Component. 검색어 state 보유, 300ms 디바운스로 `searchUsersAction` 호출(기존 `checkUsernameAction` 디바운스 패턴과 동일 간격 재사용), 로딩/빈 검색어/결과없음 상태 분기 렌더링. `SearchInput` + `RecentSearchChips` + 결과 리스트(`UserSearchResultItem`)를 여기서 오케스트레이션 — 기존 `page.tsx`가 정적으로 조합하던 구조를 대체. 결과 클릭 시 `UserProfileDialog` 오픈 상태 관리, 검색 성공 시 `addRecentSearch()`로 최근 검색어 기록 |
+| `app/(main)/search/page.tsx` | 변경 | 정적 페이지 → async Server Component. `supabase.auth.getUser()`로 현재 사용자 id만 조회해 `<UserSearchPanel currentUserId={user.id} />`에 전달(비로그인 리다이렉트 자체는 미들웨어가 `/search`를 이미 보호 경로로 처리하므로 페이지에서 재검증 불필요 — `lib/supabase/middleware.ts`의 `isPublicPath`에 `/search`가 없음) |
+| `components/search/user-search-result-item.tsx` | 변경 | prop 타입을 `MockSearchUser` → `SearchUserResult`(`lib/queries/users.ts` export)로 교체, `onClick: () => void` prop 추가(클릭 시 프로필 다이얼로그 오픈) |
+| `components/search/user-profile-dialog.tsx` | 신규 | 기존 shadcn `Dialog` 재사용. 검색 결과 클릭 시 아바타/닉네임/성별/나이/온라인 여부를 카드 형태로 표시 — 검색 결과에 이미 포함된 필드만 사용하므로 추가 쿼리 없이 즉시 표시(PRD §3.4.3 "검색 결과에서 프로필을 조회한다" 충족) |
+| `lib/utils/recent-search.ts` | 신규 | 최근 검색어 `localStorage` 헬퍼 — `getRecentSearches()`, `addRecentSearch(term)`(중복 제거 + 최대 8개 유지), `clearRecentSearches()`. 서버 저장 없이 브라우저 로컬 전용(§4.4.0 근거) |
+| `components/search/recent-search-chips.tsx` | 변경 | `items` prop은 유지하되 `onSelect(term: string)`/`onClearAll()` 콜백 prop 추가 — 클릭 시 해당 검색어로 재검색, "전체 삭제" 버튼이 실제로 `clearRecentSearches()`를 호출하도록 연결(Phase 2에서는 UI만 존재) |
+| `lib/mock/users.ts` | 삭제 | 실데이터 연결 완료 후 제거 |
+
+#### 4.4.2 검색 쿼리 상세
+
+```ts
+// lib/queries/users.ts
+export interface SearchUserResult {
+  id: string;
+  nickname: string;
+  age: number | null;
+  gender: "male" | "female" | null;
+  avatarUrl: string | null;
+  isOnline: boolean;
+}
+
+const ONLINE_THRESHOLD_MS = 2 * 60 * 1000; // ARCHITECTURE.md §5.2 — 2분 임계값
+
+export async function searchUsers(
+  query: string,
+  currentUserId: string
+): Promise<SearchUserResult[]> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("id, username, age, gender, avatar_url, last_seen_at")
+    .eq("is_anonymous", false)
+    .neq("id", currentUserId)
+    .ilike("username", `%${query}%`)
+    .limit(30);
+
+  if (error || !data) return [];
+
+  const now = Date.now();
+
+  return data
+    .filter((row) => row.username !== null)
+    .map((row) => ({
+      id: row.id,
+      nickname: row.username!,
+      age: row.age,
+      gender: row.gender as "male" | "female" | null,
+      avatarUrl: row.avatar_url,
+      isOnline: now - new Date(row.last_seen_at).getTime() < ONLINE_THRESHOLD_MS,
+    }));
+}
+```
+
+- `ilike '%query%'`는 `profiles_username_trgm_idx`(gin, `gin_trgm_ops`) 덕분에 순차 스캔 없이 인덱스를 탄다.
+- `is_anonymous = false` 조건으로 게스트 계정을 항상 제외(SEARCH-03). `profiles` select RLS가 `to authenticated using (true)`로 이미 열려 있어 별도 RLS 변경 불필요(`DB_SCHEMA.md` §2).
+- 로그인 여부 재검증(SEARCH-01)은 `searchUsersAction`에서 `getClaims()`로 수행 — 쿼리 함수(`searchUsers`) 자체는 인증 여부를 모르는 얇은 데이터 계층으로 유지(`getRoomList`류 기존 패턴과 일관).
+
+#### 4.4.3 완료 조건 및 검증 (완료, 2026-08-03)
+
+- `npm run check-all`, `npm run build` 통과
+- Playwright로 로그인 상태에서 "kyu"로 검색해 "kyu275" 결과가 표시되는지 확인 — 통과
+- Supabase MCP SQL로 검색 페이지 로드 직후 `last_seen_at`이 실제 현재 시각으로 갱신되는지 확인(하트비트 mount 즉시 호출 검증) — 통과
+- 테스트 계정의 `last_seen_at`을 SQL로 30초 전으로 직접 변경 후 재검색해 "오프라인" → "현재 온라인"으로 즉시 전환되는지 확인 — 통과
+- 비로그인 상태(쿠키 없는 요청)로 `/search` 접근 시 미들웨어가 `/auth/login?redirect=/search`로 리다이렉트하는지 확인(SEARCH-01) — 통과
+- 검색 결과 클릭 → 프로필 다이얼로그에 닉네임/성별/나이/온라인 여부가 올바르게 표시되는지 확인 — 통과
+- "전체 삭제" 버튼 클릭 시 최근 검색어 영역이 사라지는지(localStorage 초기화) 확인 — 통과
+- 익명(게스트) 계정 제외(SEARCH-03)는 쿼리 조건(`is_anonymous = false`)으로 코드 레벨에서 보장 — 실제 게스트 계정으로 별도 재현 테스트는 생략(게스트는 `username`이 없어 검색 대상 자체가 되기 어려움)
+
+**연관 PRD**: §3.4 사용자 검색, §4.4 SEARCH-01~03 — `ROADMAP.md` Phase 4와 동일
 
 ## Phase 5 — 랜덤채팅 (텍스트) — 개요만
 
