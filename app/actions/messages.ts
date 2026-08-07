@@ -53,3 +53,46 @@ export async function sendRoomMessageAction(
     return { success: false, message: "메시지 전송 중 오류가 발생했습니다." };
   }
 }
+
+/**
+ * 랜덤채팅 텍스트 메시지 전송
+ *
+ * sendRoomMessageAction과 동일하게 getClaims()로 로그인(익명 포함) 여부만 확인하고,
+ * 세션 참여자 여부·세션 활성 상태 검증은 messages INSERT RLS(§DB_SCHEMA 7)가 최종 방어선이다.
+ */
+export async function sendRandomMessageAction(
+  sessionId: string,
+  content: string
+): Promise<ActionResult> {
+  const trimmed = content.trim();
+
+  if (!trimmed) {
+    return { success: false, message: "메시지를 입력해주세요." };
+  }
+
+  try {
+    const supabase = await createClient();
+
+    const { data, error: authError } = await supabase.auth.getClaims();
+    const userId = data?.claims?.sub;
+
+    if (authError || !userId) {
+      return { success: false, message: "로그인이 필요합니다." };
+    }
+
+    const { error: insertError } = await supabase.from("messages").insert({
+      session_id: sessionId,
+      sender_id: userId,
+      content_type: "text",
+      content: trimmed,
+    });
+
+    if (insertError) {
+      return { success: false, message: "메시지 전송에 실패했습니다." };
+    }
+
+    return { success: true, message: "" };
+  } catch {
+    return { success: false, message: "메시지 전송 중 오류가 발생했습니다." };
+  }
+}

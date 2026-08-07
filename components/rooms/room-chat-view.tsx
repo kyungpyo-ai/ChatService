@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ChatHeader } from "@/components/chat/chat-header";
 import { PinnedNoticeBar } from "@/components/chat/pinned-notice-bar";
@@ -46,6 +46,16 @@ export function RoomChatView({
   const onlineUserIds = useRoomPresence(roomId, currentUserId);
   const isOwner = participants.some((p) => p.id === currentUserId && p.isOwner);
   const memberCount = participants.length;
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+
+  // 초기 로딩 시 + 새 메시지가 올 때마다 스크롤을 맨 아래로 이동한다. scrollIntoView는 컨테이너의
+  // 하단 padding까지는 못 밀어줘서 스크롤이 진짜 끝까지 안 간 것처럼 보이는 문제가 있어,
+  // 컨테이너의 scrollTop을 scrollHeight로 직접 맞춘다.
+  useEffect(() => {
+    const el = scrollContainerRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+  }, [messages]);
 
   // 방장이 나가서 방이 삭제되면(leave_room 함수가 rooms 행을 cascade 삭제) 잔류 사용자에게
   // 안내하고 잠시 후 방 목록으로 돌려보낸다.
@@ -72,8 +82,8 @@ export function RoomChatView({
   };
 
   return (
-    <div className="flex min-h-screen">
-      <div className="flex min-h-screen min-w-0 flex-1 flex-col">
+    <div className="flex h-screen">
+      <div className="flex h-screen min-w-0 flex-1 flex-col overflow-hidden">
         <ChatHeader
           title={title}
           backHref="/rooms"
@@ -90,7 +100,7 @@ export function RoomChatView({
           </div>
         )}
 
-        <div className="flex-1 space-y-4 overflow-y-auto p-4">
+        <div ref={scrollContainerRef} className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
           {messages.map((message) => (
             <ChatMessageBubble
               key={message.id}

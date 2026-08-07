@@ -40,11 +40,11 @@ export async function createRoomAction(
 
     const { data: profile } = await supabase
       .from("profiles")
-      .select("is_anonymous")
+      .select("id")
       .eq("id", user.id)
-      .single();
+      .maybeSingle();
 
-    if (!profile || profile.is_anonymous) {
+    if (!profile) {
       return { success: false, message: "게스트는 방을 만들 수 없습니다. 로그인해주세요." };
     }
 
@@ -124,13 +124,15 @@ export async function joinRoomAction(
     });
 
     if (rpcError) {
-      const message = rpcError.message.includes("banned_from_room")
-        ? "강퇴된 방에는 다시 입장할 수 없습니다."
-        : rpcError.message.includes("invalid_password")
-          ? "비밀번호가 올바르지 않습니다."
-          : rpcError.message.includes("room_full")
-            ? "정원이 가득 찼습니다."
-            : "방 입장에 실패했습니다.";
+      const message = rpcError.message.includes("guest_cannot_join_room")
+        ? "게스트는 방에 입장할 수 없습니다. 로그인해주세요."
+        : rpcError.message.includes("banned_from_room")
+          ? "강퇴된 방에는 다시 입장할 수 없습니다."
+          : rpcError.message.includes("invalid_password")
+            ? "비밀번호가 올바르지 않습니다."
+            : rpcError.message.includes("room_full")
+              ? "정원이 가득 찼습니다."
+              : "방 입장에 실패했습니다.";
 
       return { success: false, message };
     }

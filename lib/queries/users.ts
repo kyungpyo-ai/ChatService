@@ -17,7 +17,8 @@ export interface SearchUserResult {
 const ONLINE_THRESHOLD_MS = 2 * 60 * 1000;
 
 /**
- * 닉네임 부분 검색 — 게스트(익명) 계정 제외, 본인 제외, 최대 30건.
+ * 닉네임 부분 검색 — 본인 제외, 최대 30건. 게스트는 profiles에 아예 존재하지 않으므로
+ * (guest_profiles로 분리됨) 별도 필터 없이도 검색 대상에서 자동으로 제외된다.
  *
  * `username ilike '%query%'`는 `profiles_username_trgm_idx`(gin, gin_trgm_ops) 덕분에
  * 순차 스캔 없이 인덱스를 탄다. 로그인 여부 재검증은 호출자인 `searchUsersAction`이
@@ -33,7 +34,6 @@ export async function searchUsers(
   const { data, error } = await supabase
     .from("profiles")
     .select("id, username, age, gender, avatar_url, last_seen_at")
-    .eq("is_anonymous", false)
     .neq("id", currentUserId)
     .ilike("username", `%${query}%`)
     .limit(30);

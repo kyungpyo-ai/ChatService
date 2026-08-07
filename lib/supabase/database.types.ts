@@ -8,6 +8,21 @@ export type Database = {
   };
   public: {
     Tables: {
+      guest_profiles: {
+        Row: {
+          id: string;
+          last_seen_at: string;
+        };
+        Insert: {
+          id: string;
+          last_seen_at?: string;
+        };
+        Update: {
+          id?: string;
+          last_seen_at?: string;
+        };
+        Relationships: [];
+      };
       messages: {
         Row: {
           content: string;
@@ -45,10 +60,10 @@ export type Database = {
             referencedColumns: ["id"];
           },
           {
-            foreignKeyName: "messages_sender_id_fkey";
-            columns: ["sender_id"];
+            foreignKeyName: "messages_session_id_fkey";
+            columns: ["session_id"];
             isOneToOne: false;
-            referencedRelation: "profiles";
+            referencedRelation: "random_sessions";
             referencedColumns: ["id"];
           },
         ];
@@ -62,7 +77,6 @@ export type Database = {
           full_name: string | null;
           gender: string | null;
           id: string;
-          is_anonymous: boolean;
           last_seen_at: string;
           role: string;
           updated_at: string | null;
@@ -77,7 +91,6 @@ export type Database = {
           full_name?: string | null;
           gender?: string | null;
           id: string;
-          is_anonymous?: boolean;
           last_seen_at?: string;
           role?: string;
           updated_at?: string | null;
@@ -92,12 +105,140 @@ export type Database = {
           full_name?: string | null;
           gender?: string | null;
           id?: string;
-          is_anonymous?: boolean;
           last_seen_at?: string;
           role?: string;
           updated_at?: string | null;
           username?: string | null;
           website?: string | null;
+        };
+        Relationships: [];
+      };
+      random_queue: {
+        Row: {
+          last_seen_at: string;
+          queued_at: string;
+          user_id: string;
+        };
+        Insert: {
+          last_seen_at?: string;
+          queued_at?: string;
+          user_id: string;
+        };
+        Update: {
+          last_seen_at?: string;
+          queued_at?: string;
+          user_id?: string;
+        };
+        Relationships: [];
+      };
+      random_session_archives: {
+        Row: {
+          archived_at: string;
+          ended_at: string;
+          ended_by: string | null;
+          id: string;
+          messages: Json;
+          original_session_id: string;
+          started_at: string;
+          user_a_id: string;
+          user_b_id: string;
+        };
+        Insert: {
+          archived_at?: string;
+          ended_at: string;
+          ended_by?: string | null;
+          id?: string;
+          messages?: Json;
+          original_session_id: string;
+          started_at: string;
+          user_a_id: string;
+          user_b_id: string;
+        };
+        Update: {
+          archived_at?: string;
+          ended_at?: string;
+          ended_by?: string | null;
+          id?: string;
+          messages?: Json;
+          original_session_id?: string;
+          started_at?: string;
+          user_a_id?: string;
+          user_b_id?: string;
+        };
+        Relationships: [];
+      };
+      random_sessions: {
+        Row: {
+          ended_at: string | null;
+          ended_by: string | null;
+          id: string;
+          last_seen_a_at: string;
+          last_seen_b_at: string;
+          started_at: string;
+          status: string;
+          user_a_id: string;
+          user_b_id: string;
+        };
+        Insert: {
+          ended_at?: string | null;
+          ended_by?: string | null;
+          id?: string;
+          last_seen_a_at?: string;
+          last_seen_b_at?: string;
+          started_at?: string;
+          status?: string;
+          user_a_id: string;
+          user_b_id: string;
+        };
+        Update: {
+          ended_at?: string | null;
+          ended_by?: string | null;
+          id?: string;
+          last_seen_a_at?: string;
+          last_seen_b_at?: string;
+          started_at?: string;
+          status?: string;
+          user_a_id?: string;
+          user_b_id?: string;
+        };
+        Relationships: [];
+      };
+      room_archives: {
+        Row: {
+          archived_at: string;
+          created_at: string;
+          id: string;
+          is_private: boolean;
+          max_members: number;
+          member_ids: string[];
+          messages: Json;
+          original_room_id: string;
+          owner_id: string | null;
+          title: string;
+        };
+        Insert: {
+          archived_at?: string;
+          created_at: string;
+          id?: string;
+          is_private: boolean;
+          max_members: number;
+          member_ids?: string[];
+          messages?: Json;
+          original_room_id: string;
+          owner_id?: string | null;
+          title: string;
+        };
+        Update: {
+          archived_at?: string;
+          created_at?: string;
+          id?: string;
+          is_private?: boolean;
+          max_members?: number;
+          member_ids?: string[];
+          messages?: Json;
+          original_room_id?: string;
+          owner_id?: string | null;
+          title?: string;
         };
         Relationships: [];
       };
@@ -229,12 +370,29 @@ export type Database = {
       [_ in never]: never;
     };
     Functions: {
+      archive_ended_random_sessions: { Args: never; Returns: undefined };
+      cancel_random_queue: { Args: never; Returns: undefined };
+      cleanup_old_random_session_archives: { Args: never; Returns: undefined };
+      cleanup_old_room_archives: { Args: never; Returns: undefined };
+      cleanup_stale_anonymous_users: { Args: never; Returns: undefined };
+      cleanup_stale_random_queue: { Args: never; Returns: undefined };
+      end_abandoned_random_sessions: { Args: never; Returns: undefined };
+      end_random_session: { Args: { p_session_id: string }; Returns: undefined };
+      heartbeat_random_session: {
+        Args: { p_session_id: string };
+        Returns: {
+          ended_by: string;
+          partner_last_seen_at: string;
+          status: string;
+        }[];
+      };
       is_room_member: { Args: { p_room_id: string }; Returns: boolean };
       join_room: {
         Args: { p_password?: string; p_room_id: string };
         Returns: undefined;
       };
       leave_room: { Args: { p_room_id: string }; Returns: undefined };
+      match_or_wait: { Args: never; Returns: string };
       room_member_count: {
         Args: { r: Database["public"]["Tables"]["rooms"]["Row"] };
         Returns: number;

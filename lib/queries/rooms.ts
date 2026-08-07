@@ -195,40 +195,56 @@ export async function getRoomMembers(roomId: string): Promise<RoomMember[]> {
 
 interface RoomMessageRow {
   id: string;
+  sender_id: string;
   content: string;
   content_type: string;
   created_at: string;
-  sender: { id: string; username: string | null; avatar_url: string | null } | null;
 }
 
 /**
  * 방채팅 초기 메시지 목록 조회 (최근 50개) — 이후 실시간 갱신은 lib/realtime/messages.ts의 useRoomMessages가 담당
+ *
+ * messages.sender_id는 게스트도 보낼 수 있는 랜덤채팅과 컬럼을 공유하느라 profiles가 아니라
+ * auth.users를 참조하도록 되어 있어(§게스트/실사용자 분리), `profiles!messages_sender_id_fkey`
+ * 같은 PostgREST embed 힌트로는 더 이상 조인이 안 된다. 방채팅은 게스트가 못 들어오므로(§
+ * guest_cannot_join_room) 보낸 사람은 항상 profiles에 있다고 보고, 메시지와 프로필을 각각
+ * 조회해 sender_id 기준으로 직접 합친다.
  */
 export async function getRoomMessages(roomId: string): Promise<ChatMessage[]> {
   const supabase = await createClient();
 
-  const { data, error } = await supabase
+  const { data: messages, error } = await supabase
     .from("messages")
-    .select(
-      "id, content, content_type, created_at, sender:profiles!messages_sender_id_fkey(id, username, avatar_url)"
-    )
+    .select("id, sender_id, content, content_type, created_at")
     .eq("room_id", roomId)
     .order("created_at", { ascending: true })
     .limit(50);
 
-  if (error || !data) {
+  if (error || !messages) {
     return [];
   }
 
-  return (data as unknown as RoomMessageRow[])
-    .filter((message) => message.sender !== null)
-    .map((message) => ({
-      id: message.id,
-      senderId: message.sender!.id,
-      senderName: message.sender!.username ?? "익명",
-      senderAvatarUrl: message.sender!.avatar_url,
-      content: message.content_type === "text" ? message.content : "",
-      imageUrl: message.content_type === "image" ? message.content : null,
-      createdAt: formatChatTime(message.created_at),
-    }));
+  const senderIds = [...new Set(messages.map((m) => m.sender_id))];
+
+  const { data: senders } = await supabase
+    .from("profiles")
+    .select("id, username, avatar_url")
+    .in("id", senderIds);
+
+  const senderById = new Map((senders ?? []).map((s) => [s.id, s]));
+
+  return (messages as RoomMessageRow[])
+    .filter((message) => senderById.has(message.sender_id))
+    .map((message) => {
+      const sender = senderById.get(message.sender_id)!;
+      return {
+        id: message.id,
+        senderId: sender.id,
+        senderName: sender.username ?? "익명",
+        senderAvatarUrl: sender.avatar_url,
+        content: message.content_type === "text" ? message.content : "",
+        imageUrl: message.content_type === "image" ? message.content : null,
+        createdAt: formatChatTime(message.created_at),
+      };
+    });
 }

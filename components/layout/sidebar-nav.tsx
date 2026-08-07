@@ -2,12 +2,21 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, Shuffle, MessagesSquare, Search, UserRound, ChevronRight } from "lucide-react";
+import {
+  Home,
+  Shuffle,
+  MessagesSquare,
+  Search,
+  UserRound,
+  ChevronRight,
+  LogOut,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AdBanner } from "@/components/layout/ad-banner";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { ThemeSwitcher } from "@/components/theme-switcher";
+import { signOut } from "@/app/actions/auth";
 
 const NAV_ITEMS = [
   { href: "/", label: "홈", icon: Home },
@@ -61,20 +70,32 @@ export function SidebarNav({ isLoggedIn, avatarUrl, nickname }: SidebarNavProps)
       <div className="mt-auto flex flex-col gap-3">
         <AdBanner variant="sidebar" />
         {isLoggedIn ? (
-          <Link
-            href="/profile"
-            className="bg-surface-muted hover:bg-surface flex items-center gap-3 rounded-(--radius-card) border p-3"
-          >
-            <Avatar className="h-10 w-10">
-              <AvatarImage src={avatarUrl ?? undefined} alt={nickname ?? "프로필"} />
-              <AvatarFallback>{nickname?.[0] ?? "?"}</AvatarFallback>
-            </Avatar>
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-semibold">{nickname ?? "닉네임 없음"}</p>
-              <p className="text-muted-foreground text-xs">내 정보 보기</p>
-            </div>
-            <ChevronRight size={16} className="text-muted-foreground shrink-0" />
-          </Link>
+          <>
+            <Link
+              href="/profile"
+              className="bg-surface-muted hover:bg-surface flex items-center gap-3 rounded-(--radius-card) border p-3"
+            >
+              <Avatar className="h-10 w-10">
+                <AvatarImage src={avatarUrl ?? undefined} alt={nickname ?? "프로필"} />
+                <AvatarFallback>{nickname?.[0] ?? "?"}</AvatarFallback>
+              </Avatar>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-semibold">{nickname ?? "닉네임 없음"}</p>
+                <p className="text-muted-foreground text-xs">내 정보 보기</p>
+              </div>
+              <ChevronRight size={16} className="text-muted-foreground shrink-0" />
+            </Link>
+            <form action={signOut}>
+              <Button
+                type="submit"
+                variant="ghost"
+                className="text-muted-foreground hover:text-foreground w-full justify-start gap-3 px-3"
+              >
+                <LogOut size={18} />
+                로그아웃
+              </Button>
+            </form>
+          </>
         ) : (
           <Link href="/auth/login">
             <Button className="bg-brand hover:bg-brand/90 text-brand-foreground w-full rounded-(--radius-card)">

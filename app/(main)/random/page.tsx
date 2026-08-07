@@ -1,21 +1,9 @@
-import { Button } from "@/components/ui/button";
-import { ChatHeader } from "@/components/chat/chat-header";
-import { MatchingIndicator } from "@/components/random/matching-indicator";
+import { RandomMatchingClient } from "@/components/random/random-matching-client";
 
+/**
+ * 랜덤채팅 매칭 대기 화면 — 서버에서 조회할 데이터가 없어 클라이언트 컴포넌트를
+ * 렌더링하는 얇은 래퍼로만 구성한다(익명 로그인/매칭 요청은 모두 클라이언트 훅에서 처리).
+ */
 export default function RandomMatchingPage() {
-  return (
-    <div className="flex min-h-screen flex-col">
-      <ChatHeader title="랜덤채팅" backHref="/" />
-
-      <div className="mx-auto flex w-full max-w-md flex-1 flex-col items-center px-4">
-        <MatchingIndicator />
-
-        <Button variant="outline" className="w-full max-w-xs rounded-(--radius-card)">
-          매칭 취소
-        </Button>
-
-        <p className="text-muted-foreground mt-6 text-xs">TIP. 매너있는 대화는 모두가 즐거워요!</p>
-      </div>
-    </div>
-  );
+  return <RandomMatchingClient />;
 }
