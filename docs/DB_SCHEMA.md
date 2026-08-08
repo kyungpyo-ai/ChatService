@@ -283,14 +283,15 @@ create index messages_session_id_created_at_idx on public.messages (session_id, 
 
 alter table public.messages enable row level security;
 
+-- 입장 시점(joined_at) 이후 메시지만 조회 가능 (2026-08-08 변경, 오픈채팅 방식)
+-- 비멤버는 room_member_joined_at()이 null을 반환하고 `created_at >= null`이 거짓으로
+-- 평가되므로, 멤버십 확인과 시점 컷오프가 이 조건 하나로 동시에 처리된다.
 create policy "room participants can view room messages"
   on public.messages for select
   to authenticated
   using (
-    room_id is not null and exists (
-      select 1 from public.room_members rm
-      where rm.room_id = messages.room_id and rm.user_id = auth.uid()
-    )
+    room_id is not null
+    and created_at >= public.room_member_joined_at(room_id)
   );
 
 create policy "session participants can view session messages"
@@ -330,8 +331,8 @@ create policy "session participants can send session messages"
   );
 ```
 
-- `content`: `content_type = 'text'`면 메시지 본문, `'image'`면 Storage 경로(§ARCHITECTURE 7의 `chat-images/{room_id 또는 session_id}/{uuid}.{ext}`)를 저장.
-- 이미지 형식/용량 검증은 DB 제약이 아닌 서버 액션에서 업로드 전에 수행 (§ARCHITECTURE 8).
+- `content`: `content_type = 'text'`면 메시지 본문, `'image'`면 Storage 경로(§ARCHITECTURE 8의 `chat-images/rooms/{room_id}/{uuid}.{ext}` 또는 `chat-images/sessions/{session_id}/{uuid}.{ext}`)를 저장.
+- 이미지 형식/용량 검증은 DB 제약이 아니라 버킷 레벨 설정(`file_size_limit`/`allowed_mime_types`)과 서버 액션의 사후 메타데이터 확인으로 수행 (§ARCHITECTURE 8).
 
 ---
 
@@ -342,6 +343,7 @@ create policy "session participants can send session messages"
 | 함수 | 역할 | 대응 요구사항 |
 |---|---|---|
 | `join_room(p_room_id uuid, p_password text)` | 정원 확인 → 강퇴 이력 확인 → 비밀번호 해시 검증 → `room_members` INSERT | ROOM-02, ROOM-03, ROOM-04, ROOM-07 |
+| `room_member_joined_at(p_room_id uuid)` | 호출자의 해당 방 입장 시각 반환(비멤버는 null). `messages` SELECT 정책의 이전 대화 컷오프에 사용 — 정책에서 `room_members`를 직접 서브쿼리하면 §7의 무한 재귀가 재발하므로 반드시 이 함수를 경유한다 | 오픈채팅식 이력 정책 |
 | `kick_member(p_room_id uuid, p_target_user_id uuid)` | 호출자가 해당 방 `owner_id`인지 재검증 → `room_members` DELETE → `room_bans` INSERT | ROOM-06 |
 | `match_or_wait()` | `random_queue`를 `FOR UPDATE SKIP LOCKED`로 조회 → 대기 상대 있으면 `random_sessions` 생성 후 큐 제거, 없으면 큐에 등록 | RND-01~03 |
 | `end_random_session(p_session_id uuid)` | 호출자가 세션 참여자인지 확인 → `status = 'ended'`, `ended_by` 기록 | RND-05 |
@@ -355,8 +357,10 @@ create policy "session participants can send session messages"
 
 | 버킷 | 정책 |
 |---|---|
-| `chat-images` | 비공개 버킷. 업로드는 서버 액션에서 서명 URL 발급 후 수행. 조회는 `room_members`/`random_sessions` 참여자만 — Storage RLS 정책에서 경로의 `room_id`/`session_id` 세그먼트를 참여자 여부와 대조 |
+| `chat-images` | 비공개 버킷(`file_size_limit` 5MB, `allowed_mime_types` JPG·PNG·WEBP). 업로드는 서버 액션에서 서명 업로드 URL 발급 후 클라이언트가 직접 전송. 조회는 `room_members`/`random_sessions` 참여자만 — Storage RLS 정책이 경로의 `rooms`/`sessions` 접두사로 대조할 테이블을 정하고 두 번째 세그먼트(`room_id`/`session_id`)를 참여자 여부와 대조. **방 참여자 검증은 `is_room_member()` SECURITY DEFINER 함수를 재사용**한다(정책 안에서 `room_members`를 직접 서브쿼리하면 §7의 무한 재귀가 재발함). UPDATE/DELETE 정책은 만들지 않아 참여자도 수정·삭제 불가 |
 | `avatars` (기존) | 변경 없음 |
+
+- 정리용 `list_orphaned_chat_images()` SECURITY DEFINER 함수 — `messages`·`room_archives`·`random_session_archives` 어디에서도 참조되지 않고 생성된 지 1시간이 지난 오브젝트만 반환(업로드↔메시지 INSERT 사이의 경쟁 상태 보호). 실제 삭제는 `/api/cron/cleanup-chat-images`가 Storage API로 수행한다 — Postgres에서 `storage.objects`를 직접 DELETE하는 것은 Storage가 차단한다.
 
 ---
 

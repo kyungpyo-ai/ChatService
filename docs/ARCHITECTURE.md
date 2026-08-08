@@ -209,11 +209,16 @@ sequenceDiagram
 
 | 버킷 | 경로 규칙 | 접근 |
 |---|---|---|
-| `chat-images` | `{room_id 또는 session_id}/{uuid}.{ext}` | 업로드: 서버 액션에서 검증 후 서명 URL 발급 / 조회: 참여자만 (RLS 연동 정책) |
+| `chat-images` | `rooms/{room_id}/{uuid}.{ext}` 또는 `sessions/{session_id}/{uuid}.{ext}` | 업로드: 서버 액션이 서명 업로드 URL 발급 → 클라이언트가 Storage에 직접 전송 / 조회: 참여자만 (Storage RLS) |
 | `avatars` (기존) | 그대로 유지 | 기존 정책 유지 |
 
-- 업로드 전 서버 액션에서 MIME 타입(JPG/PNG/WEBP)과 용량(5MB) 검증 후 Storage에 업로드
+- **`rooms/`·`sessions/` 접두사가 필요한 이유**: Storage RLS는 경로 세그먼트만으로 참여자 여부를 검증해야 하는데, 첫 세그먼트가 곧바로 uuid면 `rooms`와 `random_sessions` 중 어느 테이블을 조회할지 판별할 수 없다(둘 다 uuid라 형태로도 구분 불가).
+- **업로드가 서버를 거치지 않는 이유**: Next.js 서버 액션 body 상한이 기본 1MB라 5MB 파일을 액션으로 넘길 수 없고, 상한을 올리면 5MB가 서버리스 함수를 그대로 통과해 낭비다. 서버 액션은 "업로드 허가"(서명 URL)만 발급한다.
+- 검증은 3중: ① 클라이언트 사전 검사(UX) ② **버킷 레벨 `file_size_limit`(5MB) / `allowed_mime_types`(JPG·PNG·WEBP) — Storage 서버가 강제하므로 우회 불가** ③ 메시지 INSERT 시 업로드된 오브젝트의 실제 size/mimetype 재확인. 검증 실패 시 오브젝트를 삭제해 메시지로 만들지 않는다.
+  - 한계: 파일이 서버를 거치지 않아 **매직바이트 검사는 불가능**하다(선언된 Content-Type만 검증됨). 비공개 버킷 + UUID 경로 + `next/image` 경유라 실행 위험은 없어 MVP에서는 수용한다.
 - 파일명은 UUID로 강제해 추측 불가능하게 함 (§7.1)
+- 조회는 서명 URL(TTL 1시간). 초기 로드는 배치 발급, Realtime 수신 건은 클라이언트가 단건 발급(Storage SELECT RLS가 참여자 여부를 검증).
+- **정리**: DB cascade는 Storage 파일을 지우지 않는다. 방/세션이 사라지면 RLS가 자동으로 접근을 차단하고, 실제 파일 삭제는 아카이브 보존 기한(30일)에 맞춰 `/api/cron/cleanup-chat-images`가 수행한다. Postgres에서 `storage.objects`를 직접 DELETE하는 것은 Storage가 막으므로 pg_cron만으로는 처리할 수 없다.
 
 ---
 

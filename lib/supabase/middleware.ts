@@ -46,9 +46,14 @@ export async function updateSession(request: NextRequest) {
   const user = data?.claims;
 
   // 게스트(비로그인)도 접근 가능한 공개 경로 — PRD상 랜덤채팅/방 목록은 로그인 없이 이용 가능
+  //
+  // /api/cron/*은 사용자 세션이 아니라 CRON_SECRET(Authorization 헤더)으로 스스로를 보호하는
+  // 배치 전용 경로다. 여기서 걸러주지 않으면 세션이 없는 Vercel Cron 요청이 /auth/login으로
+  // 리다이렉트되어 배치가 실행되지 않는다(엔드포인트의 시크릿 검증에 도달조차 못 함).
   const isPublicPath =
     request.nextUrl.pathname === "/" ||
     request.nextUrl.pathname.startsWith("/auth") ||
+    request.nextUrl.pathname.startsWith("/api/cron") ||
     request.nextUrl.pathname.startsWith("/random") ||
     request.nextUrl.pathname.startsWith("/rooms");
 

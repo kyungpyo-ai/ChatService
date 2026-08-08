@@ -2,8 +2,8 @@
 
 > 이 문서는 `ROADMAP.md`의 Phase를 실제 파일/컴포넌트/함수 단위 태스크로 분해한 것이다. **바로 착수하는 Phase만 상세히 작성**하고, 이후 Phase는 착수 직전에 이 문서를 갱신해 상세화한다 — 먼 미래 Phase를 지금 촘촘히 계획해봐야 실제 착수 시점에 요구사항/설계가 바뀔 가능성이 크기 때문이다.
 
-- 상세 작성됨: **Phase 2 — UI 뼈대 및 디자인 시스템**, **Phase 3 — 방채팅(텍스트)**, **Phase 4 — 방 나가기/온라인 상태/사용자 검색**, **Phase 5 — 랜덤채팅(텍스트)**, **Phase 5.5 — 랜덤채팅 Presence 기반 재설계**
-- 개요만 있음: Phase 6~10 (해당 Phase 착수 시 이 문서에 상세 추가)
+- 상세 작성됨: **Phase 2 — UI 뼈대 및 디자인 시스템**, **Phase 3 — 방채팅(텍스트)**, **Phase 4 — 방 나가기/온라인 상태/사용자 검색**, **Phase 5 — 랜덤채팅(텍스트)**, **Phase 5.5 — 랜덤채팅 Presence 기반 재설계**, **Phase 6 — 이미지 전송**
+- 개요만 있음: Phase 7~10 (해당 Phase 착수 시 이 문서에 상세 추가)
 
 ---
 
@@ -737,13 +737,179 @@ Presence) 3.14초 — 전부 정상.
 DB 변경 없음(마이그레이션 없음). Playwright로 실제 DOM을 측정해 스크롤 동작 검증
 (`scrollTop 505.14` vs `maxScroll 505`).
 
-## Phase 6 — 이미지 전송 — 개요만
+## Phase 6 — 이미지 전송 (상세)
 
-`ROADMAP.md` Phase 6 참고. 착수 시 Storage 버킷/정책 마이그레이션, 업로드 서버 액션, 클라이언트 업로드 컴포넌트를 상세화한다.
+`ROADMAP.md` Phase 6 / PRD §4.2 RND-04, §5 ROOM-05, §5.1 이미지 정책, §7.1 이미지 검증 대응.
+
+### 6.0 착수 시점 현황 (2026-08-08 확인)
+
+먼저 실제로 뭐가 없는지부터 확인했다. **이미 준비되어 있는 것**:
+
+| 항목 | 상태 |
+|---|---|
+| `messages.content_type` `'image'` 값 | 스키마·CHECK 제약·생성된 타입에 이미 포함 |
+| `content`에 Storage 경로 저장한다는 규약 | `DB_SCHEMA.md` §7 주석에 명시됨 |
+| 조회 → `imageUrl` 매핑 | `lib/queries/rooms.ts`, `lib/queries/random.ts` 양쪽에 이미 구현됨 |
+| Realtime 수신 → `imageUrl` 매핑 | `lib/realtime/messages.ts`, `lib/realtime/random.ts` 양쪽에 이미 구현됨 |
+| 이미지 버블 렌더링 | `ChatMessageBubble`이 `imageUrl` 있으면 `next/image`로 렌더 |
+| Supabase 호스트 이미지 허용 | `next.config.ts` `remotePatterns`에 이미 등록됨 |
+
+**즉 비어 있는 것은 4가지뿐이다**: ① 버킷과 Storage 정책, ② 업로드 경로(액션 + UI), ③ 저장된 "경로"를 표시 가능한 "URL"로 바꾸는 변환, ④ 삭제된 방/세션의 이미지 정리. 기존 매핑 코드가 `imageUrl: message.content`로 **경로를 그대로 URL 자리에 넣고 있어** ③을 넣을 때 이 지점을 반드시 고쳐야 한다(현재 상태로는 깨진 이미지가 뜬다).
+
+Storage 버킷은 **현재 0개**다(`avatars`도 실제로는 없음 — `profiles.avatar_url`은 외부 URL만 쓰고 있었다). 이 프로젝트의 첫 Storage 작업이므로 참고할 기존 정책이 없다.
+
+`ChatInputBar`의 `+` 버튼은 `disabled`로 자리만 잡혀 있다(`components/chat/chat-input-bar.tsx:30`).
+
+### 6.1 설계 결정
+
+#### (1) 경로 규칙 — 기존 문서 수정 필요
+
+`ARCHITECTURE.md` §8은 `chat-images/{room_id 또는 session_id}/{uuid}.{ext}`로 적고 있으나, 이대로면 **Storage RLS에서 첫 세그먼트만 보고 `rooms`를 조회해야 할지 `random_sessions`를 조회해야 할지 판별할 수 없다**(uuid라 형태로도 구분 불가). 컨텍스트 접두사를 붙인다.
+
+```
+chat-images/rooms/{room_id}/{uuid}.{ext}
+chat-images/sessions/{session_id}/{uuid}.{ext}
+```
+
+→ `ARCHITECTURE.md` §8, `DB_SCHEMA.md` §7 주석·§9를 이 규칙으로 갱신한다.
+
+#### (2) 업로드 방식 — 서명 업로드 URL (클라이언트 직접 업로드)
+
+`ARCHITECTURE.md` §8의 "서버 액션에서 검증 후 Storage에 업로드"를 문자 그대로 구현하면 5MB 파일이 서버 액션 body로 흐르는데, **Next.js 서버 액션 body 기본 상한이 1MB**라 그대로는 동작하지 않는다. 상한을 6MB로 올릴 수는 있지만 5MB가 Vercel 함수를 그대로 통과하게 되어 대역폭·실행시간 낭비다. `DB_SCHEMA.md` §9가 이미 적어둔 **"서버 액션에서 서명 URL 발급 후 수행"** 방식을 채택한다.
+
+```
+1. 클라: 파일 선택 → 형식/용량 사전 검사(UX용) → 미리보기
+2. 클라 → 서버 액션 createChatImageUploadUrlAction(context, id, ext)
+     서버: 로그인 확인(getClaims) + 참여자 여부 재검증 + UUID 경로 생성
+           → createSignedUploadUrl(path) 발급 (파일 자체는 서버를 거치지 않음)
+3. 클라: 서명 URL로 Storage에 직접 업로드
+4. 클라 → 서버 액션 sendRoomImageMessageAction / sendRandomImageMessageAction(path)
+     서버: 경로가 본인이 방금 발급받은 형식인지 + 오브젝트가 실제 존재하는지 +
+           size/mimetype 재확인 → messages INSERT (content_type='image', content=path)
+```
+
+메시지 row가 화면 표시의 유일한 근거이므로, 4단계 검증에 실패하면 INSERT하지 않고 업로드된 오브젝트를 삭제한다 → **검증을 통과하지 못한 파일은 어떤 화면에도 나타나지 않는다.**
+
+#### (3) 검증은 3중 — 단, 매직바이트 검사는 하지 않음
+
+| 계층 | 내용 | 우회 가능성 |
+|---|---|---|
+| 클라이언트 사전 검사 | 확장자·`file.size`·`file.type` | 우회 가능 (UX 목적) |
+| **버킷 레벨** | `file_size_limit = 5MB`, `allowed_mime_types = image/jpeg,image/png,image/webp` | **Storage 서버가 강제 — 우회 불가** |
+| 메시지 INSERT 액션 | 업로드된 오브젝트의 실제 `metadata->>'size'` / `mimetype` 재확인 | 우회 불가 |
+
+한계 명시: `allowed_mime_types`는 **선언된** Content-Type 기준이라, 실제로는 이미지가 아닌 파일에 `image/png` 헤더를 붙이면 통과한다. 파일 내용(매직바이트) 검사는 파일이 서버를 거치지 않는 이 방식에서는 불가능하다. 완화 요인: 버킷이 비공개라 참여자만 접근 가능하고, 경로가 UUID이며, 표시는 `next/image`를 통해서만 이뤄진다. 실행 위험은 없고 "이미지가 안 보인다" 수준의 문제라 MVP에서는 수용한다. (**Phase 7.5 신고 처리**로 사후 대응)
+
+#### (4) 조회 — 비공개 버킷 + 서명 URL
+
+`ARCHITECTURE.md` §10에서 이미 "퍼블릭 버킷(접근 제어 불가)"을 기각했으므로 그대로 간다. 서명 URL 발급 주체는 두 경로로 나뉜다.
+
+- **초기 로드**(`getRoomMessages` / `getRandomMessages`): 이미지 메시지 경로를 모아 `createSignedUrls()`로 **한 번에 배치 발급** (메시지 50개마다 개별 발급하지 않는다)
+- **Realtime 수신**: 새 이미지 메시지가 도착한 시점에 클라이언트가 `createSignedUrl()` 단건 발급. Storage SELECT RLS가 참여자 여부를 검증하므로 클라이언트가 직접 발급해도 안전하다
+
+TTL은 **1시간**. 장시간 열어둔 탭에서 만료될 수 있으므로 `<Image onError>`에서 1회 재발급하는 폴백을 둔다.
+
+#### (5) 이미지 정리 — 어느 문서에도 없던 구멍
+
+DB cascade는 Storage 파일을 지우지 않는다. 현재 설계대로면 **방장이 나가 방이 삭제되거나(§Phase 4) 랜덤 세션이 종료·아카이브될 때마다(§Phase 5) 이미지가 전부 고아 파일로 영구히 남는다.**
+
+보존 기준은 기존 아카이브 정책(30일)에 맞춘다 — 신고 대응 시 대화 내용만 있고 이미지가 없으면 반쪽이기 때문이다.
+
+| 시점 | 이미지 처리 |
+|---|---|
+| 방/세션이 살아있는 동안 | 유지 (참여자 조회 가능) |
+| 방 삭제·세션 종료 직후 | 파일은 유지하되, 참조하던 `rooms`/`random_sessions` row가 사라져 **Storage RLS가 자동으로 접근을 차단** → 참여자도 더는 못 봄 (대화 내용이 URL 재방문 시 404가 되는 기존 동작과 일관) |
+| 아카이브 30일 만료 | 대화 아카이브 정리와 **같은 배치에서 이미지도 삭제** |
+
+정리 주체: `storage.objects` row만 지우면 실제 파일이 스토리지 백엔드에 남으므로 **pg_cron만으로는 안 된다.** Route Handler `app/api/cron/cleanup-chat-images/route.ts`(`CRON_SECRET` 검증 + 서비스 롤 키)를 만들고, 고아 경로 목록은 SECURITY DEFINER 함수 `list_orphaned_chat_images()`로 SQL에서 뽑아 `storage.remove()`로 삭제한다. 실제 스케줄 등록은 Vercel Cron이므로 **Phase 9(배포)에 의존** — Phase 6에서는 엔드포인트와 수동 호출 검증까지만 하고, Phase 9 체크리스트에 cron 등록 항목을 추가한다.
+
+### 6.2 태스크 — 파일 단위
+
+#### DB / Storage (마이그레이션)
+
+| # | 내용 |
+|---|---|
+| M1 | `chat-images` 비공개 버킷 생성 (`file_size_limit` 5MB, `allowed_mime_types` 3종) |
+| M2 | Storage RLS — SELECT: 경로 1번째 세그먼트가 `rooms`면 `is_room_member()`로, `sessions`면 `random_sessions` 참여자 여부로 검증 |
+| M3 | Storage RLS — INSERT: 위와 동일 조건 + 업로드 시점에 방/세션이 살아있을 것. UPDATE/DELETE 정책은 만들지 않음(수정·삭제 불가) |
+| M4 | `list_orphaned_chat_images()` SECURITY DEFINER — `messages`·두 아카이브 테이블 어디에서도 참조되지 않는 경로 반환 |
+
+> ⚠️ Phase 3에서 겪은 RLS 무한 재귀를 되풀이하지 않도록, 정책 안에서 `room_members`를 직접 서브쿼리하지 말고 기존 `is_room_member()` SECURITY DEFINER 함수를 재사용한다.
+
+#### 서버 액션 / 쿼리
+
+| 파일 | 작업 |
+|---|---|
+| `app/actions/chat-images.ts` (신규) | `createChatImageUploadUrlAction()` — 참여자 재검증 + UUID 경로 + 서명 업로드 URL 발급 |
+| `app/actions/messages.ts` | `sendRoomImageMessageAction()`, `sendRandomImageMessageAction()` 추가 — 오브젝트 실존·size·mimetype 재확인 후 INSERT, 실패 시 오브젝트 삭제 |
+| `lib/storage/chat-images.ts` (신규) | 경로 생성/파싱, 확장자·MIME 화이트리스트, 서명 URL 배치 발급 헬퍼 (서버·클라 공용 상수) |
+| `lib/queries/rooms.ts` | `getRoomMessages()` — `imageUrl: message.content` → 서명 URL 배치 발급 결과로 교체 |
+| `lib/queries/random.ts` | `getRandomMessages()` — 동일 |
+
+#### 클라이언트
+
+| 파일 | 작업 |
+|---|---|
+| `components/chat/chat-input-bar.tsx` | `+` 버튼 활성화 → 파일 선택(`accept="image/jpeg,image/png,image/webp"`), 사전 검증, `onSendImage` prop 추가. 업로드 중 진행 상태 표시 |
+| `components/chat/chat-image-preview.tsx` (신규) | 전송 전 미리보기 + 취소 |
+| `lib/realtime/messages.ts` | `sendImageMessage()` 추가 — 텍스트와 동일한 낙관적 UI(로컬 `URL.createObjectURL`로 즉시 표시 → Realtime INSERT 도착 시 실제 row로 치환). 경로가 UUID라 `content` 기준 reconcile 매칭은 그대로 성립 |
+| `lib/realtime/random.ts` | 동일 |
+| `components/rooms/room-chat-view.tsx` | `handleSendImage` 연결 |
+| `components/random/random-chat-view.tsx` | 동일 |
+| `components/chat/chat-message-bubble.tsx` | 로딩·만료 폴백(`onError` 재발급), 클릭 시 원본 확대(경량 Dialog) |
+
+#### 배치
+
+| 파일 | 작업 |
+|---|---|
+| `app/api/cron/cleanup-chat-images/route.ts` (신규) | `CRON_SECRET` 검증 → `list_orphaned_chat_images()` → `storage.remove()` |
+
+#### 문서
+
+- `ARCHITECTURE.md` §8 — 경로 규칙에 `rooms/`·`sessions/` 접두사 반영, 업로드 방식을 서명 업로드 URL로 정정
+- `DB_SCHEMA.md` §7 주석·§9 — 동일 반영 + 이미지 보존/정리 정책 추가
+- `npm run db:types` 재생성
+
+### 6.3 검증 시나리오 (Playwright + SQL)
+
+1. 방채팅에서 JPG/PNG/WEBP 각 1장 전송 → 상대 브라우저에 실시간 표시
+2. 랜덤채팅(게스트 두 명, 익명 로그인)에서 동일 확인 — **게스트 업로드가 Storage RLS를 통과하는지가 핵심**
+3. 5MB 초과 파일 → 클라 단계에서 거부. 클라 검사를 우회해 직접 업로드 시도 → 버킷 레벨에서 거부되는지 SQL/직접 호출로 확인
+4. 비참여자가 이미지 경로를 알고 서명 URL 발급 시도 → Storage RLS로 거부
+5. 방장이 방을 나가 방 삭제 → 잔류 참여자가 이미지에 더는 접근 못 함, 파일은 아직 남아있음(아카이브 대응용) SQL로 확인
+6. `list_orphaned_chat_images()` 호출 → 살아있는 방/세션의 이미지가 목록에 섞이지 않는지 확인(**정상 이미지를 지우는 사고 방지**가 가장 중요)
+7. 정리 엔드포인트 수동 호출 → 고아 파일만 삭제됨 확인
+8. `get_advisors(security)`로 신규 Storage 정책 점검
+
+### 6.4 구현 결과 (2026-08-08)
+
+계획대로 구현·검증 완료. 상세 검증 내역은 `ROADMAP.md` Phase 6 "검증 완료" 참고. 계획 대비 달라진 점은 없다.
+
+**검증 중 발견·수정한 버그 1건 (계획에 없던 것)**: `/api/cron/cleanup-chat-images`가 **미들웨어에 가로채여 `/auth/login`으로 307 리다이렉트**되고 있었다. 세션 쿠키가 없는 Cron 요청은 라우트의 `CRON_SECRET` 검증에 도달조차 못 하므로, 배포 후 정리 배치가 조용히 실행되지 않았을 문제다. `lib/supabase/middleware.ts`의 공개 경로에 `/api/cron`을 추가해 해결.
+
+> 교훈: 세션이 아닌 다른 수단(시크릿 헤더)으로 스스로를 보호하는 엔드포인트를 추가할 때는 **미들웨어의 인증 리다이렉트가 그 앞을 막지 않는지** 반드시 확인해야 한다. 앞으로 `/api/*` 계열 배치·웹훅 엔드포인트를 추가할 때 동일하게 점검할 것.
+
+### 6.5 Phase 7 이월 / 열린 이슈
+
+- **이미지 업로드 rate limit** — 게스트도 업로드 가능하므로 스팸·불법 이미지의 주요 경로가 된다. Phase 7의 rate limit 대상에 메시지 전송·방 생성과 함께 **이미지 업로드**를 명시적으로 포함시킨다
+- **Vercel Cron 등록** — Phase 9 배포 체크리스트에 `cleanup-chat-images` 스케줄 추가. 배포 시 `SUPABASE_SERVICE_ROLE_KEY`/`CRON_SECRET`을 Vercel 환경변수에도 등록해야 한다(로컬 `.env.local`에는 2026-08-08 설정 완료)
+- **매직바이트 검사 미적용** — 위 §6.1(3) 한계. 필요 시 Phase 7.5 신고 처리로 대응
+- **`next/image` 최적화 캐시** — 서명 URL이 1시간마다 바뀌면 최적화 결과가 재사용되지 않는다. 실측 후 필요하면 채팅 이미지에 한해 `unoptimized` 검토
 
 ## Phase 7 — 권한 검증 및 계정 관리 — 개요만
 
 `ROADMAP.md` Phase 7 참고. 착수 시 강퇴/탈퇴 서버 액션, rate limit 구현 방식(DB 카운터 vs Upstash Redis) 결정 및 상세화한다.
+
+## Phase 7.5 — 관리자 페이지 — 개요만
+
+`ROADMAP.md` Phase 7.5 참고. 착수 시 아래를 결정·상세화한다.
+
+- 관리자 판별 방식 (`profiles.role` 재사용 + `is_admin()` SECURITY DEFINER 함수 — RLS 재귀 주의)
+- `/admin/*` 라우트 구조와 미들웨어 차단 방식 (404 vs 리다이렉트)
+- 관리자 전용 조회 경로 설계 (일반 사용자 RLS를 건드리지 않는 방향)
+- 대화/이미지 열람 UI 구성과 Storage 관리자 접근 방식
+- 신고 접수(일반 사용자) ↔ 신고 처리 큐(관리자) 데이터 모델
+- 감사 로그 테이블 설계 및 기록 범위 (조치만 vs 열람 포함)
 
 ## Phase 8 — UI/UX 마감 및 반응형 — 개요만
 

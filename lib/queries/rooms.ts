@@ -6,6 +6,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { formatChatTime } from "@/lib/utils/date";
+import { getSignedChatImageUrls } from "@/lib/storage/chat-images";
 import type { ChatMessage } from "@/components/chat/chat-message-bubble";
 
 export interface RoomListItem {
@@ -204,6 +205,10 @@ interface RoomMessageRow {
 /**
  * 방채팅 초기 메시지 목록 조회 (최근 50개) — 이후 실시간 갱신은 lib/realtime/messages.ts의 useRoomMessages가 담당
  *
+ * 조회 범위는 "내가 입장한 시점 이후"로 제한된다(오픈채팅 방식). 이 필터링은 messages SELECT
+ * RLS(`created_at >= room_member_joined_at(room_id)`)가 담당하므로 여기서 별도 조건을 걸지
+ * 않는다 — RLS가 limit보다 먼저 적용되어, 입장 이후 메시지 중 최근 50개가 조회된다.
+ *
  * messages.sender_id는 게스트도 보낼 수 있는 랜덤채팅과 컬럼을 공유하느라 profiles가 아니라
  * auth.users를 참조하도록 되어 있어(§게스트/실사용자 분리), `profiles!messages_sender_id_fkey`
  * 같은 PostgREST embed 힌트로는 더 이상 조인이 안 된다. 방채팅은 게스트가 못 들어오므로(§
@@ -213,16 +218,21 @@ interface RoomMessageRow {
 export async function getRoomMessages(roomId: string): Promise<ChatMessage[]> {
   const supabase = await createClient();
 
-  const { data: messages, error } = await supabase
+  // "최근 50개"를 가져오려면 최신순(desc)으로 자른 뒤 표시용으로 시간순(asc)으로 되돌려야 한다.
+  // asc + limit(50)으로 자르면 방에 메시지가 50개를 넘는 순간 가장 오래된 50개만 보이고
+  // 최근 대화가 통째로 사라진다.
+  const { data: latestMessages, error } = await supabase
     .from("messages")
     .select("id, sender_id, content, content_type, created_at")
     .eq("room_id", roomId)
-    .order("created_at", { ascending: true })
+    .order("created_at", { ascending: false })
     .limit(50);
 
-  if (error || !messages) {
+  if (error || !latestMessages) {
     return [];
   }
+
+  const messages = [...latestMessages].reverse();
 
   const senderIds = [...new Set(messages.map((m) => m.sender_id))];
 
@@ -232,6 +242,14 @@ export async function getRoomMessages(roomId: string): Promise<ChatMessage[]> {
     .in("id", senderIds);
 
   const senderById = new Map((senders ?? []).map((s) => [s.id, s]));
+
+  // 이미지 메시지의 Storage 경로를 모아 서명 URL을 한 번에 배치 발급한다(메시지마다 개별
+  // 발급하지 않음, §DEVELOPMENT_PLAN 6.1 (4)). content는 비공개 버킷 경로일 뿐 URL이
+  // 아니므로 그대로 <Image src>에 넘기면 깨진 이미지가 뜬다.
+  const imagePaths = (messages as RoomMessageRow[])
+    .filter((message) => message.content_type === "image")
+    .map((message) => message.content);
+  const signedUrlByPath = await getSignedChatImageUrls(supabase, imagePaths);
 
   return (messages as RoomMessageRow[])
     .filter((message) => senderById.has(message.sender_id))
@@ -243,7 +261,8 @@ export async function getRoomMessages(roomId: string): Promise<ChatMessage[]> {
         senderName: sender.username ?? "익명",
         senderAvatarUrl: sender.avatar_url,
         content: message.content_type === "text" ? message.content : "",
-        imageUrl: message.content_type === "image" ? message.content : null,
+        imageUrl:
+          message.content_type === "image" ? (signedUrlByPath.get(message.content) ?? null) : null,
         createdAt: formatChatTime(message.created_at),
       };
     });

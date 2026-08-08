@@ -6,6 +6,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { formatChatTime } from "@/lib/utils/date";
+import { getSignedChatImageUrls } from "@/lib/storage/chat-images";
 import type { ChatMessage } from "@/components/chat/chat-message-bubble";
 
 export interface RandomSessionDetail {
@@ -67,23 +68,34 @@ export async function getRandomSessionMessages(
 ): Promise<ChatMessage[]> {
   const supabase = await createClient();
 
-  const { data, error } = await supabase
+  // "최근 50개"를 가져오려면 최신순(desc)으로 자른 뒤 표시용으로 시간순(asc)으로 되돌려야 한다.
+  // asc + limit(50)으로 자르면 대화가 50개를 넘는 순간 가장 오래된 50개만 보인다.
+  const { data: latest, error } = await supabase
     .from("messages")
     .select("id, sender_id, content, content_type, created_at")
     .eq("session_id", sessionId)
-    .order("created_at", { ascending: true })
+    .order("created_at", { ascending: false })
     .limit(50);
 
-  if (error || !data) {
+  if (error || !latest) {
     return [];
   }
+
+  const data = [...latest].reverse();
+
+  // 이미지 메시지 경로를 모아 서명 URL을 한 번에 배치 발급 (§DEVELOPMENT_PLAN 6.1 (4)).
+  const imagePaths = (data as RandomMessageRow[])
+    .filter((message) => message.content_type === "image")
+    .map((message) => message.content);
+  const signedUrlByPath = await getSignedChatImageUrls(supabase, imagePaths);
 
   return (data as RandomMessageRow[]).map((message) => ({
     id: message.id,
     senderId: message.sender_id,
     senderName: message.sender_id === currentUserId ? "나" : "상대방",
     content: message.content_type === "text" ? message.content : "",
-    imageUrl: message.content_type === "image" ? message.content : null,
+    imageUrl:
+      message.content_type === "image" ? (signedUrlByPath.get(message.content) ?? null) : null,
     createdAt: formatChatTime(message.created_at),
   }));
 }

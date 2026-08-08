@@ -37,7 +37,7 @@ export function RoomChatView({
   const router = useRouter();
   const [participantsOpen, setParticipantsOpen] = useState(false);
   const [leaveDialogOpen, setLeaveDialogOpen] = useState(false);
-  const { messages, participants, roomDeleted, sendMessage } = useRoomMessages(
+  const { messages, participants, roomDeleted, sendMessage, sendImageMessage } = useRoomMessages(
     roomId,
     initialMessages,
     initialParticipants,
@@ -69,6 +69,11 @@ export function RoomChatView({
   const handleSend = (text: string) => {
     if (roomDeleted) return;
     void sendMessage(text);
+  };
+
+  const handleSendImage = async (file: File) => {
+    if (roomDeleted) return;
+    await sendImageMessage(file);
   };
 
   const handleLeave = async () => {
@@ -110,7 +115,7 @@ export function RoomChatView({
           ))}
         </div>
 
-        <ChatInputBar onSend={handleSend} disabled={roomDeleted} />
+        <ChatInputBar onSend={handleSend} onSendImage={handleSendImage} disabled={roomDeleted} />
       </div>
 
       <ParticipantSidePanel participants={participants} onlineUserIds={onlineUserIds} />

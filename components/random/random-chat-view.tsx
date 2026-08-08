@@ -31,7 +31,7 @@ export function RandomChatView({
 }: RandomChatViewProps) {
   const router = useRouter();
   const [endedByMe, setEndedByMe] = useState(initialEndedByMe);
-  const { messages, partnerEnded, sendMessage } = useRandomSessionMessages(
+  const { messages, partnerEnded, sendMessage, sendImageMessage } = useRandomSessionMessages(
     sessionId,
     initialMessages,
     currentUserId
@@ -58,6 +58,11 @@ export function RandomChatView({
   const handleSend = (text: string) => {
     if (sessionEnded) return;
     void sendMessage(text);
+  };
+
+  const handleSendImage = async (file: File) => {
+    if (sessionEnded) return;
+    await sendImageMessage(file);
   };
 
   const handleEnd = async () => {
@@ -124,7 +129,7 @@ export function RandomChatView({
           </Button>
         </div>
       ) : (
-        <ChatInputBar onSend={handleSend} />
+        <ChatInputBar onSend={handleSend} onSendImage={handleSendImage} />
       )}
     </div>
   );

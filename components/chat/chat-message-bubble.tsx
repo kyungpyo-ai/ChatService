@@ -1,5 +1,11 @@
+"use client";
+
+import { useState } from "react";
 import Image from "next/image";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { createClient } from "@/lib/supabase/client";
+import { CHAT_IMAGES_BUCKET, getSignedChatImageUrl } from "@/lib/storage/chat-images";
 import { cn } from "@/lib/utils";
 
 export interface ChatMessage {
@@ -16,6 +22,99 @@ export interface ChatMessage {
 interface ChatMessageBubbleProps {
   message: ChatMessage;
   variant: "me" | "other";
+}
+
+/** 서명 URL에서 원본 Storage 경로를 역추출한다 — 만료(onError) 시 재발급에 사용한다 */
+function extractChatImagePath(signedUrl: string): string | null {
+  const match = new RegExp(`/object/sign/${CHAT_IMAGES_BUCKET}/([^?]+)`).exec(signedUrl);
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
+/**
+ * 이미지 버블 본체 — 로딩 스켈레톤, 서명 URL 만료 1회 재발급 폴백, 클릭 시 원본 확대를 담당한다.
+ *
+ * 낙관적 전송 중인 로컬 미리보기는 blob: URL이라 next/image 최적화 대상이 아니므로
+ * unoptimized로 렌더한다(재발급 대상도 아니다 — 실패해도 재시도하지 않는다).
+ */
+function ChatImageBubbleContent({ imageUrl }: { imageUrl: string }) {
+  const [src, setSrc] = useState(imageUrl);
+  const [loaded, setLoaded] = useState(false);
+  const [retried, setRetried] = useState(false);
+  const [broken, setBroken] = useState(false);
+  const [open, setOpen] = useState(false);
+  const isBlob = src.startsWith("blob:");
+
+  const handleError = async () => {
+    // blob URL(전송 중 로컬 미리보기)이거나 이미 한 번 재발급을 시도했다면 더 이상 재시도하지
+    // 않는다 — 무한 재시도 루프 방지.
+    if (isBlob || retried) {
+      setBroken(true);
+      return;
+    }
+    setRetried(true);
+
+    const path = extractChatImagePath(src);
+    if (!path) {
+      setBroken(true);
+      return;
+    }
+
+    const supabase = createClient();
+    const renewed = await getSignedChatImageUrl(supabase, path);
+    if (renewed) {
+      setLoaded(false);
+      setSrc(renewed);
+    } else {
+      setBroken(true);
+    }
+  };
+
+  if (broken) {
+    return (
+      <div className="bg-surface text-muted-foreground flex h-40 w-56 items-center justify-center rounded-(--radius-bubble) text-xs">
+        이미지를 불러올 수 없습니다
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        className="relative block h-40 w-56 cursor-zoom-in overflow-hidden rounded-(--radius-bubble)"
+        onClick={() => setOpen(true)}
+        aria-label="이미지 원본 크게 보기"
+      >
+        {!loaded && <div className="bg-surface absolute inset-0 animate-pulse" />}
+        <Image
+          src={src}
+          alt="전송된 이미지"
+          fill
+          className={cn("object-cover transition-opacity", loaded ? "opacity-100" : "opacity-0")}
+          sizes="224px"
+          unoptimized={isBlob}
+          onLoad={() => setLoaded(true)}
+          onError={() => void handleError()}
+        />
+      </button>
+
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-w-2xl border-none bg-transparent p-2 shadow-none">
+          <DialogTitle className="sr-only">전송된 이미지 원본</DialogTitle>
+          <div className="relative h-[70vh] w-full">
+            <Image
+              src={src}
+              alt="전송된 이미지 원본"
+              fill
+              className="object-contain"
+              sizes="100vw"
+              unoptimized={isBlob}
+            />
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
 }
 
 /**
@@ -49,20 +148,15 @@ export function ChatMessageBubble({ message, variant }: ChatMessageBubbleProps) 
         <div className={cn("flex items-end gap-1.5", isMe && "flex-row-reverse")}>
           <div
             className={cn(
-              "rounded-(--radius-bubble) px-3.5 py-2 text-sm break-words",
-              isMe ? "bg-brand text-brand-foreground" : "bg-surface-muted text-foreground"
+              message.imageUrl
+                ? "overflow-hidden rounded-(--radius-bubble)"
+                : "rounded-(--radius-bubble) px-3.5 py-2 text-sm break-words",
+              !message.imageUrl &&
+                (isMe ? "bg-brand text-brand-foreground" : "bg-surface-muted text-foreground")
             )}
           >
             {message.imageUrl ? (
-              <div className="relative h-40 w-56 overflow-hidden rounded-(--radius-bubble)">
-                <Image
-                  src={message.imageUrl}
-                  alt="전송된 이미지"
-                  fill
-                  className="object-cover"
-                  sizes="224px"
-                />
-              </div>
+              <ChatImageBubbleContent imageUrl={message.imageUrl} />
             ) : (
               message.content
             )}

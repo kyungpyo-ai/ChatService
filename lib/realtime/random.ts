@@ -3,8 +3,17 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { formatChatTime } from "@/lib/utils/date";
-import { sendRandomMessageAction } from "@/app/actions/messages";
+import { sendRandomImageMessageAction, sendRandomMessageAction } from "@/app/actions/messages";
+import { createChatImageUploadUrlAction } from "@/app/actions/chat-images";
 import { endRandomSessionAction, heartbeatRandomSessionAction } from "@/app/actions/random";
+import {
+  CHAT_IMAGES_BUCKET,
+  CHAT_IMAGE_MAX_SIZE_BYTES,
+  CHAT_IMAGE_MIME_TO_EXTENSION,
+  getSignedChatImageUrl,
+  isValidChatImageMimeType,
+  type ChatImageMimeType,
+} from "@/lib/storage/chat-images";
 import { showError } from "@/lib/utils/toast";
 import type { ChatMessage } from "@/components/chat/chat-message-bubble";
 
@@ -29,16 +38,26 @@ interface SessionRow {
   ended_by: string | null;
 }
 
-/** 전송 직후 낙관적으로 붙인 메시지를 Realtime INSERT 이벤트와 매칭하기 위한 대기 큐 항목 */
+/**
+ * 전송 직후 낙관적으로 붙인 메시지를 Realtime INSERT 이벤트와 매칭하기 위한 대기 큐 항목.
+ *
+ * 텍스트는 전송 시점에 이미 content(문자열)를 알지만, 이미지는 업로드 URL을 발급받아야
+ * 비로소 Storage 경로(=content)를 알 수 있다. 그래서 이미지의 경우 낙관적 메시지를 먼저
+ * 화면에 붙이고, 경로를 알게 된 시점에 이 큐에 등록한다 — 등록 시점이 실제 업로드/INSERT
+ * 보다 항상 앞서므로 Realtime 이벤트를 놓치지 않는다.
+ */
 interface PendingSend {
   tempId: string;
   content: string;
+  /** 이미지 전송인 경우의 로컬 미리보기 blob URL — reconcile 시 해제해 누수를 막는다 */
+  previewUrl?: string;
 }
 
 interface RandomSessionLiveState {
   messages: ChatMessage[];
   partnerEnded: boolean;
   sendMessage: (content: string) => Promise<void>;
+  sendImageMessage: (file: File) => Promise<void>;
 }
 
 /**
@@ -111,8 +130,15 @@ export function useRandomSessionMessages(
             table: "messages",
             filter: `session_id=eq.${sessionId}`,
           },
-          (payload) => {
+          async (payload) => {
             const row = payload.new as MessageRow;
+
+            // row.content는 이미지 메시지의 경우 서명 URL이 아니라 Storage 경로다.
+            // 비공개 버킷이라 표시하려면 별도로 서명 URL을 발급받아야 한다(텍스트는 즉시 null).
+            const imageUrl =
+              row.content_type === "image"
+                ? await getSignedChatImageUrl(supabase, row.content)
+                : null;
 
             // 내가 보낸 메시지라면 낙관적으로 붙여둔 임시 항목을 실제 row로 치환(reconcile)한다.
             if (row.sender_id === currentUserId) {
@@ -121,6 +147,9 @@ export function useRandomSessionMessages(
               );
               if (pendingIndex !== -1) {
                 const [pending] = pendingSendsRef.current.splice(pendingIndex, 1);
+                if (pending.previewUrl) {
+                  URL.revokeObjectURL(pending.previewUrl);
+                }
                 setMessages((prev) => {
                   if (prev.some((m) => m.id === row.id)) return prev;
                   return prev.map((m) =>
@@ -130,7 +159,7 @@ export function useRandomSessionMessages(
                           senderId: row.sender_id,
                           senderName: "나",
                           content: row.content_type === "text" ? row.content : "",
-                          imageUrl: row.content_type === "image" ? row.content : null,
+                          imageUrl,
                           createdAt: formatChatTime(row.created_at),
                         }
                       : m
@@ -149,7 +178,7 @@ export function useRandomSessionMessages(
                   senderId: row.sender_id,
                   senderName: row.sender_id === currentUserId ? "나" : "상대방",
                   content: row.content_type === "text" ? row.content : "",
-                  imageUrl: row.content_type === "image" ? row.content : null,
+                  imageUrl,
                   createdAt: formatChatTime(row.created_at),
                 },
               ];
@@ -237,6 +266,12 @@ export function useRandomSessionMessages(
       cancelled = true;
       clearInterval(heartbeatTimer);
       channels.forEach((channel) => supabase.removeChannel(channel));
+      // 언마운트 시점까지 reconcile되지 못한 이미지 낙관적 메시지의 blob URL을 정리한다.
+      pendingSendsRef.current.forEach((pending) => {
+        if (pending.previewUrl) {
+          URL.revokeObjectURL(pending.previewUrl);
+        }
+      });
     };
   }, [sessionId, currentUserId]);
 
@@ -269,5 +304,73 @@ export function useRandomSessionMessages(
     [sessionId, currentUserId]
   );
 
-  return { messages, partnerEnded, sendMessage };
+  const sendImageMessage = useCallback(
+    async (file: File) => {
+      const mimeType = file.type;
+      if (!isValidChatImageMimeType(mimeType)) {
+        showError("JPG, PNG, WEBP 형식의 이미지만 첨부할 수 있습니다.");
+        return;
+      }
+      if (file.size > CHAT_IMAGE_MAX_SIZE_BYTES) {
+        showError("이미지는 5MB 이하만 첨부할 수 있습니다.");
+        return;
+      }
+
+      const tempId = `temp-${crypto.randomUUID()}`;
+      const previewUrl = URL.createObjectURL(file);
+
+      // 1. 경로를 알기 전이라도 로컬 blob URL로 즉시 미리보기를 붙인다(낙관적 UI).
+      const optimisticMessage: ChatMessage = {
+        id: tempId,
+        senderId: currentUserId,
+        senderName: "나",
+        content: "",
+        imageUrl: previewUrl,
+        createdAt: formatChatTime(new Date().toISOString()),
+      };
+      setMessages((prev) => [...prev, optimisticMessage]);
+
+      const rollback = (message: string) => {
+        pendingSendsRef.current = pendingSendsRef.current.filter((p) => p.tempId !== tempId);
+        setMessages((prev) => prev.filter((m) => m.id !== tempId));
+        URL.revokeObjectURL(previewUrl);
+        showError(message);
+      };
+
+      // 2. 업로드 URL 발급 — 이 시점에 비로소 Storage 경로(=content)를 알게 된다.
+      const ticket = await createChatImageUploadUrlAction(
+        "sessions",
+        sessionId,
+        CHAT_IMAGE_MIME_TO_EXTENSION[mimeType as ChatImageMimeType]
+      );
+      if (!ticket.success || !ticket.data) {
+        rollback(ticket.message || "이미지 업로드 준비에 실패했습니다.");
+        return;
+      }
+
+      // 경로를 알게 된 시점에 pending 큐에 등록한다. 업로드/INSERT는 아직 시작 전이므로
+      // Realtime INSERT 이벤트보다 항상 먼저 등록되어 reconcile 매칭을 놓치지 않는다.
+      pendingSendsRef.current.push({ tempId, content: ticket.data.path, previewUrl });
+
+      // 3. 서명 URL로 Storage에 직접 업로드(파일 바이트는 서버 액션을 거치지 않는다).
+      const supabase = createClient();
+      const { error: uploadError } = await supabase.storage
+        .from(CHAT_IMAGES_BUCKET)
+        .uploadToSignedUrl(ticket.data.path, ticket.data.token, file);
+
+      if (uploadError) {
+        rollback("이미지 업로드에 실패했습니다.");
+        return;
+      }
+
+      // 4. 메시지 INSERT — 성공하면 Realtime INSERT 이벤트가 위 pending 큐를 통해 reconcile한다.
+      const result = await sendRandomImageMessageAction(sessionId, ticket.data.path);
+      if (!result.success) {
+        rollback(result.message);
+      }
+    },
+    [sessionId, currentUserId]
+  );
+
+  return { messages, partnerEnded, sendMessage, sendImageMessage };
 }

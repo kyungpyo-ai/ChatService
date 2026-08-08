@@ -392,6 +392,7 @@ export type Database = {
         Returns: undefined;
       };
       leave_room: { Args: { p_room_id: string }; Returns: undefined };
+      list_orphaned_chat_images: { Args: never; Returns: string[] };
       match_or_wait: { Args: never; Returns: string };
       room_member_count: {
         Args: { r: Database["public"]["Tables"]["rooms"]["Row"] };
