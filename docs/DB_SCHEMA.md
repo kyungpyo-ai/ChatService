@@ -194,7 +194,7 @@ create trigger on_room_created
 create table public.room_bans (
   room_id uuid not null references public.rooms(id) on delete cascade,
   user_id uuid not null references public.profiles(id) on delete cascade,
-  banned_by uuid not null references public.profiles(id),
+  banned_by uuid references public.profiles(id) on delete set null,
   banned_at timestamptz not null default now(),
   primary key (room_id, user_id)
 );
@@ -211,8 +211,23 @@ create policy "room owner can view bans"
     )
   );
 
+-- 강퇴당한 본인도 자신의 밴 기록은 조회 가능 (§ROADMAP Phase 7) — room_members DELETE
+-- Realtime 이벤트는 RLS 평가 시점에 이미 자기 멤버십이 사라진 뒤라 본인에게 전달되지
+-- 않을 수 있어, 강퇴 시 새로 INSERT되는 이 행을 실시간 알림 트리거로 대신 사용한다.
+create policy "banned user can view own ban"
+  on public.room_bans for select
+  to authenticated
+  using (user_id = (select auth.uid()));
+
 revoke insert, update, delete on public.room_bans from authenticated;
+
+alter publication supabase_realtime add table public.room_bans;
 ```
+
+`banned_by`는 방장이 탈퇴해도 강퇴 기록 자체(누가 금지됐는지)는 남아야 하므로
+`on delete set null`로 바꿨다(원래 `not null` + 참조만, `ON DELETE` 미지정 = `NO ACTION`이라
+탈퇴 시도 자체가 FK 위반으로 실패했다 — §Phase 7 구현 결과 참고). 강퇴는 클라이언트가 직접
+INSERT하지 않고 `kick_member()` SECURITY DEFINER 함수(§8)를 통해서만 이루어진다.
 
 ---
 
@@ -268,7 +283,7 @@ create table public.messages (
   id uuid primary key default gen_random_uuid(),
   room_id uuid references public.rooms(id) on delete cascade,
   session_id uuid references public.random_sessions(id) on delete cascade,
-  sender_id uuid not null references public.profiles(id),
+  sender_id uuid references auth.users(id) on delete set null,
   content_type text not null check (content_type in ('text', 'image')),
   content text not null,
   created_at timestamptz not null default now(),
@@ -333,6 +348,13 @@ create policy "session participants can send session messages"
 
 - `content`: `content_type = 'text'`면 메시지 본문, `'image'`면 Storage 경로(§ARCHITECTURE 8의 `chat-images/rooms/{room_id}/{uuid}.{ext}` 또는 `chat-images/sessions/{session_id}/{uuid}.{ext}`)를 저장.
 - 이미지 형식/용량 검증은 DB 제약이 아니라 버킷 레벨 설정(`file_size_limit`/`allowed_mime_types`)과 서버 액션의 사후 메타데이터 확인으로 수행 (§ARCHITECTURE 8).
+- `sender_id`는 `on delete set null`이다(2026-08-09, §ROADMAP Phase 7). 원래 `not null` +
+  `ON DELETE` 미지정(`NO ACTION`)이었는데, 방장이 아닌 방/세션에 메시지를 남긴 계정을
+  탈퇴시키면 그 메시지가 FK 위반으로 걸려 탈퇴 자체가 실패했다. `ON DELETE CASCADE`는
+  탈퇴한 사람이 남의 방/세션에 남긴 메시지까지 지워 상대방 대화 기록에 구멍을 내므로
+  채택하지 않았다 — `SET NULL`로 메시지는 보존하고 발신자 식별만 잃는다. 조회 시
+  `sender_id`가 null이면 클라이언트가 "탈퇴한 사용자"로 표시한다(`lib/queries/rooms.ts`,
+  `lib/queries/random.ts`).
 
 ---
 
@@ -344,12 +366,35 @@ create policy "session participants can send session messages"
 |---|---|---|
 | `join_room(p_room_id uuid, p_password text)` | 정원 확인 → 강퇴 이력 확인 → 비밀번호 해시 검증 → `room_members` INSERT | ROOM-02, ROOM-03, ROOM-04, ROOM-07 |
 | `room_member_joined_at(p_room_id uuid)` | 호출자의 해당 방 입장 시각 반환(비멤버는 null). `messages` SELECT 정책의 이전 대화 컷오프에 사용 — 정책에서 `room_members`를 직접 서브쿼리하면 §7의 무한 재귀가 재발하므로 반드시 이 함수를 경유한다 | 오픈채팅식 이력 정책 |
-| `kick_member(p_room_id uuid, p_target_user_id uuid)` | 호출자가 해당 방 `owner_id`인지 재검증 → `room_members` DELETE → `room_bans` INSERT | ROOM-06 |
+| `kick_member(p_room_id uuid, p_target_user_id uuid)` | 호출자가 해당 방 `owner_id`인지 재검증(방장이 아니거나 대상이 방장이면 예외) → `room_members` DELETE → `room_bans` INSERT | ROOM-06 |
 | `match_or_wait()` | `random_queue`를 `FOR UPDATE SKIP LOCKED`로 조회 → 대기 상대 있으면 `random_sessions` 생성 후 큐 제거, 없으면 큐에 등록 | RND-01~03 |
-| `end_random_session(p_session_id uuid)` | 호출자가 세션 참여자인지 확인 → `status = 'ended'`, `ended_by` 기록 | RND-05 |
+| `end_random_session(p_session_id uuid)` | 호출자가 세션 참여자인지 확인 → `status = 'ended'`, `ended_by` 기록(실제 아카이브+삭제는 `archive_ended_random_sessions()` cron이 60초 뒤 수행) | RND-05 |
 | `cancel_random_queue()` | 호출자 본인의 `random_queue` 행 삭제 | RND-05 |
+| `archive_room_before_delete()` / `archive_random_session_before_delete()` | `rooms`/`random_sessions`의 **BEFORE DELETE 트리거** — 삭제 직전 행을 각각 `room_archives`/`random_session_archives`에 무조건 스냅샷한다. `leave_room()`이나 `archive_ended_random_sessions()`을 거치지 않는 삭제(계정 탈퇴 cascade, Phase 7.5 관리자 강제 삭제)까지 포함해 삭제 경로와 무관하게 보존을 보장한다. 트리거 전용이라 `EXECUTE` 권한은 회수되어 있다 | §Phase 7 아카이브 우회 문제 해결 |
+| `check_and_record_rate_limit(p_action text, p_max_count int, p_window_seconds int)` | 호출자의 최근 `p_window_seconds`초간 `p_action` 횟수가 `p_max_count` 미만이면 `rate_limit_events`에 기록하고 true, 이상이면 기록 없이 false | §7.1 rate limit |
 
-계정 탈퇴(AUTH-02)는 DB 함수가 아니라 **서버 액션에서 Supabase Admin API(`auth.admin.deleteUser`, 서비스 롤 키 사용)**로 처리한다. `auth.users` 삭제 시 `profiles`는 `on delete cascade`로 함께 정리되고, 연쇄적으로 `rooms`(owner였던 경우), `room_members`, `random_queue` 등도 cascade로 정리된다. 탈퇴 처리 전 "로그인 상태 + 본인 확인"은 서버 액션에서 재검증한다.
+계정 탈퇴(AUTH-02)는 DB 함수가 아니라 **서버 액션에서 Supabase Admin API(`auth.admin.deleteUser`, 서비스 롤 키 사용)**로 처리한다(`app/actions/profile.ts`의 `deleteAccountAction`). `auth.users` 삭제 시 `profiles`는 `on delete cascade`로 함께 정리되고, 연쇄적으로 `rooms`(owner였던 경우)·`room_members`·`random_queue`·`random_sessions` 등도 cascade로 정리된다. `rooms`/`random_sessions`가 삭제되는 순간 위 트리거가 아카이브를 남기고, 다른 사람 방/세션에 남긴 메시지는 `sender_id`가 `on delete set null`이라 지워지지 않고 발신자만 익명화된다. 탈퇴 처리 전 "로그인 상태 + 본인 확인"은 `getClaims()`로 서버 액션에서 재검증한다.
+
+### `rate_limit_events`
+
+메시지 전송/방 생성/이미지 업로드 요청 횟수 제한용 카운터 테이블(§7.1). 클라이언트는 직접
+읽거나 쓸 수 없고 `check_and_record_rate_limit()`을 통해서만 접근한다.
+
+```sql
+create table public.rate_limit_events (
+  user_id uuid not null references auth.users(id) on delete cascade,
+  action text not null check (action in ('send_message', 'create_room', 'upload_image')),
+  created_at timestamptz not null default now()
+);
+
+create index rate_limit_events_user_action_idx
+  on public.rate_limit_events (user_id, action, created_at desc);
+
+alter table public.rate_limit_events enable row level security;
+revoke all on public.rate_limit_events from public, anon, authenticated;
+```
+
+오래된 행은 `cleanup_old_rate_limit_events()`가 pg_cron(매일 04:00)으로 7일 지난 것을 삭제한다.
 
 ---
 

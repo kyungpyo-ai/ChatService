@@ -4,6 +4,7 @@ import { getUserProfile } from "@/lib/queries/profile";
 import { ProfileEditForm } from "@/components/profile-edit-form";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import { DeleteAccountButton } from "@/components/delete-account-button";
 import { signOut } from "@/app/actions/auth";
 
 export default async function ProfilePage() {
@@ -43,9 +44,7 @@ export default async function ProfilePage() {
             로그아웃
           </Button>
         </form>
-        <Button variant="ghost" className="text-destructive hover:text-destructive w-full">
-          계정 탈퇴
-        </Button>
+        <DeleteAccountButton />
       </div>
     </div>
   );

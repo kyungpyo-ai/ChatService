@@ -11,6 +11,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createRoomSchema } from "@/lib/schemas/room";
+import { checkRateLimit } from "@/lib/utils/rate-limit";
 import type { ActionResult } from "@/lib/types/forms";
 
 /**
@@ -46,6 +47,14 @@ export async function createRoomAction(
 
     if (!profile) {
       return { success: false, message: "게스트는 방을 만들 수 없습니다. 로그인해주세요." };
+    }
+
+    const withinRateLimit = await checkRateLimit(supabase, "create_room");
+    if (!withinRateLimit) {
+      return {
+        success: false,
+        message: "방 생성 횟수 제한을 초과했습니다. 잠시 후 다시 시도해주세요.",
+      };
     }
 
     const isPrivate = formData.get("isPrivate") === "true";
@@ -176,5 +185,44 @@ export async function leaveRoomAction(roomId: string): Promise<ActionResult> {
     return { success: true, message: "" };
   } catch {
     return { success: false, message: "방 나가기 중 오류가 발생했습니다." };
+  }
+}
+
+/**
+ * 방장 강퇴 액션 (§ROADMAP Phase 7, ROOM-06)
+ *
+ * kick_member() DB 함수(SECURITY DEFINER)가 호출자가 실제로 해당 방의 방장인지
+ * 재검증한다 — 일반 참여자가 이 액션을 호출해도 함수 내부에서 거부된다. 강퇴 시
+ * room_members DELETE + room_bans INSERT까지 함수가 한 번에 처리하므로(§DB_SCHEMA 8),
+ * 재입장 차단은 join_room()이 이미 room_bans를 확인해 별도 구현이 필요 없다.
+ * 강퇴당한 사용자에게는 이미 있는 room_members DELETE Realtime 이벤트가 그대로 전달된다.
+ */
+export async function kickMemberAction(
+  roomId: string,
+  targetUserId: string
+): Promise<ActionResult> {
+  try {
+    const supabase = await createClient();
+
+    const { data, error: authError } = await supabase.auth.getClaims();
+    const userId = data?.claims?.sub;
+
+    if (authError || !userId) {
+      return { success: false, message: "로그인이 필요합니다." };
+    }
+
+    const { error: rpcError } = await supabase.rpc("kick_member", {
+      p_room_id: roomId,
+      p_target_user_id: targetUserId,
+    });
+
+    if (rpcError) {
+      return { success: false, message: "강퇴에 실패했습니다. 방장만 강퇴할 수 있습니다." };
+    }
+
+    revalidatePath(`/rooms/${roomId}`);
+    return { success: true, message: "" };
+  } catch {
+    return { success: false, message: "강퇴 중 오류가 발생했습니다." };
   }
 }

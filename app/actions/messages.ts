@@ -11,6 +11,7 @@ import {
   CHAT_IMAGE_MAX_SIZE_BYTES,
   parseChatImagePath,
 } from "@/lib/storage/chat-images";
+import { checkRateLimit } from "@/lib/utils/rate-limit";
 import type { ActionResult } from "@/lib/types/forms";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
@@ -42,6 +43,14 @@ export async function sendRoomMessageAction(
 
     if (authError || !userId) {
       return { success: false, message: "로그인이 필요합니다." };
+    }
+
+    const withinRateLimit = await checkRateLimit(supabase, "send_message");
+    if (!withinRateLimit) {
+      return {
+        success: false,
+        message: "메시지를 너무 빠르게 보내고 있습니다. 잠시 후 다시 시도해주세요.",
+      };
     }
 
     const { error: insertError } = await supabase.from("messages").insert({
@@ -85,6 +94,14 @@ export async function sendRandomMessageAction(
 
     if (authError || !userId) {
       return { success: false, message: "로그인이 필요합니다." };
+    }
+
+    const withinRateLimit = await checkRateLimit(supabase, "send_message");
+    if (!withinRateLimit) {
+      return {
+        success: false,
+        message: "메시지를 너무 빠르게 보내고 있습니다. 잠시 후 다시 시도해주세요.",
+      };
     }
 
     const { error: insertError } = await supabase.from("messages").insert({

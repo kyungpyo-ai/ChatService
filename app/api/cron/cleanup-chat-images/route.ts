@@ -12,12 +12,12 @@
  * list_orphaned_chat_images()는 authenticated/anon에게서 EXECUTE 권한을 명시적으로
  * revoke했으므로 서비스 롤이 아니면 애초에 호출할 수 없다.
  *
- * ⚠️ SUPABASE_SERVICE_ROLE_KEY는 이 작업 시점 기준 .env.local에 아직 없다. 서버 전용
- * 비밀값이므로 절대 NEXT_PUBLIC_ 접두사를 쓰지 않고, 값이 없으면 500으로 명확히 실패한다.
+ * 서비스 롤 클라이언트는 lib/supabase/admin.ts의 createAdminClient()를 공용으로 쓴다
+ * (Phase 7에서 계정 탈퇴 액션과 공유하도록 분리됨).
  */
 
 import { NextResponse } from "next/server";
-import { createClient as createSupabaseClient } from "@supabase/supabase-js";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { CHAT_IMAGES_BUCKET } from "@/lib/storage/chat-images";
 
 export async function GET(request: Request) {
@@ -35,24 +35,15 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-  if (!supabaseUrl || !serviceRoleKey) {
+  let supabase;
+  try {
+    supabase = createAdminClient();
+  } catch (error) {
     return NextResponse.json(
-      {
-        error:
-          "SUPABASE_SERVICE_ROLE_KEY(또는 NEXT_PUBLIC_SUPABASE_URL)가 설정되지 않아 정리 작업을 실행할 수 없습니다.",
-      },
+      { error: error instanceof Error ? error.message : "관리자 클라이언트 생성에 실패했습니다." },
       { status: 500 }
     );
   }
-
-  // 서비스 롤 키는 RLS를 우회하는 서버 전용 비밀값이라, 쿠키 기반 lib/supabase/server.ts의
-  // createClient()가 아니라 이 라우트 안에서 직접 클라이언트를 생성한다(세션 저장/갱신 불필요).
-  const supabase = createSupabaseClient(supabaseUrl, serviceRoleKey, {
-    auth: { autoRefreshToken: false, persistSession: false },
-  });
 
   const { data: orphanedPaths, error: rpcError } = await supabase.rpc("list_orphaned_chat_images");
 

@@ -2,8 +2,8 @@
 
 > 이 문서는 `ROADMAP.md`의 Phase를 실제 파일/컴포넌트/함수 단위 태스크로 분해한 것이다. **바로 착수하는 Phase만 상세히 작성**하고, 이후 Phase는 착수 직전에 이 문서를 갱신해 상세화한다 — 먼 미래 Phase를 지금 촘촘히 계획해봐야 실제 착수 시점에 요구사항/설계가 바뀔 가능성이 크기 때문이다.
 
-- 상세 작성됨: **Phase 2 — UI 뼈대 및 디자인 시스템**, **Phase 3 — 방채팅(텍스트)**, **Phase 4 — 방 나가기/온라인 상태/사용자 검색**, **Phase 5 — 랜덤채팅(텍스트)**, **Phase 5.5 — 랜덤채팅 Presence 기반 재설계**, **Phase 6 — 이미지 전송**
-- 개요만 있음: Phase 7~10 (해당 Phase 착수 시 이 문서에 상세 추가)
+- 상세 작성됨: **Phase 2 — UI 뼈대 및 디자인 시스템**, **Phase 3 — 방채팅(텍스트)**, **Phase 4 — 방 나가기/온라인 상태/사용자 검색**, **Phase 5 — 랜덤채팅(텍스트)**, **Phase 5.5 — 랜덤채팅 Presence 기반 재설계**, **Phase 6 — 이미지 전송**, **Phase 7 — 권한 검증 및 계정 관리**
+- 개요만 있음: Phase 7.5~10 (해당 Phase 착수 시 이 문서에 상세 추가)
 
 ---
 
@@ -896,9 +896,220 @@ DB cascade는 Storage 파일을 지우지 않는다. 현재 설계대로면 **�
 - **매직바이트 검사 미적용** — 위 §6.1(3) 한계. 필요 시 Phase 7.5 신고 처리로 대응
 - **`next/image` 최적화 캐시** — 서명 URL이 1시간마다 바뀌면 최적화 결과가 재사용되지 않는다. 실측 후 필요하면 채팅 이미지에 한해 `unoptimized` 검토
 
-## Phase 7 — 권한 검증 및 계정 관리 — 개요만
+## Phase 7 — 권한 검증 및 계정 관리 (상세)
 
-`ROADMAP.md` Phase 7 참고. 착수 시 강퇴/탈퇴 서버 액션, rate limit 구현 방식(DB 카운터 vs Upstash Redis) 결정 및 상세화한다.
+`ROADMAP.md` Phase 7 / PRD §4.1 AUTH-02, §5 ROOM-06·ROOM-07, §7.1 전체 대응.
+
+### 7.0 착수 시점 현황 (2026-08-08 확인)
+
+먼저 이미 있는 것과 없는 것을 구분했다.
+
+| 항목 | 상태 |
+|---|---|
+| `kick_member(p_room_id, p_target_user_id)` SECURITY DEFINER 함수 | Phase 3 DB 설계 때부터 이미 존재(§DB_SCHEMA 8). 방장 재검증 + `room_members` DELETE + `room_bans` INSERT까지 구현됨 |
+| 강퇴 이력 재입장 차단 | `join_room()`이 이미 `room_bans` 확인 후 `banned_from_room` 예외를 던짐(§`20260804145603` 마이그레이션) — **완료됨** |
+| 비참여자 메시지 접근 차단 | `messages` SELECT RLS가 이미 참여자만 허용(§Phase 3, Phase 6에서 입장 시점 컷오프까지 강화) — **완료됨, 재검증만 필요** |
+| 강퇴 UI/서버 액션 | **없음** — `kick_member` RPC를 호출하는 곳이 코드 전체에 0곳(`grep` 확인) |
+| 계정 탈퇴 서버 액션 | **없음** — `app/(main)/profile/page.tsx`에 "계정 탈퇴" 문구만 있고 동작 없음 |
+| rate limit | **없음** — 관련 라이브러리도 미설치, DB 카운터 테이블도 없음 |
+| `rooms.owner_id`/`random_sessions.*_id` cascade가 아카이브를 우회하는 문제 | `ROADMAP.md` Phase 6 검증 중 발견, **미해결** — 이번 Phase의 핵심 항목 |
+
+즉 이번 Phase는 ①강퇴 UI 연결, ②계정 탈퇴 구현, ③탈퇴/강제삭제가 아카이브를 우회하는 구조적 결함 수정, ④rate limit 신규 구현, ⑤기존 RLS 재검증 다섯 갈래다. ①③④가 실제 작업량 대부분이고 ②⑤는 상대적으로 가볍다.
+
+### 7.1 설계 결정
+
+#### (1) 아카이브 우회 문제 — 트리거 방식으로 통합 (가장 먼저 처리)
+
+**왜 먼저인가**: 계정 탈퇴(이번 Phase)와 Phase 7.5의 관리자 강제 삭제가 둘 다 이 경로를 타므로, 탈퇴 기능을 구현하기 전에 고쳐야 탈퇴 기능 자체가 처음부터 안전하게 나온다. 순서를 바꿔 탈퇴부터 만들면 "탈퇴하면 신고 증거가 사라지는" 상태로 한 번 배포되는 셈이라 위험하다.
+
+**현재 구조의 문제**: `leave_room()`과 `end_random_session()`은 각각 자기 함수 안에서 "아카이브 INSERT → 원본 DELETE"를 수동으로 수행한다. 이 두 함수를 거치지 않고 `rooms`/`random_sessions` 행이 지워지는 경로(계정 탈퇴의 cascade, 향후 관리자 강제 삭제)는 아카이브 INSERT를 건너뛰고 바로 DELETE만 일어난다.
+
+**해결**: `rooms`, `random_sessions` 두 테이블에 각각 `BEFORE DELETE` 트리거를 달아 "삭제되기 직전 행을 무조건 아카이브에 남긴다"를 테이블 레벨에서 보장한다. 그리고 `leave_room()`/`end_random_session()`에서 수동 아카이브 INSERT 로직을 제거해 `DELETE`만 남긴다 — 이렇게 해야 트리거가 유일한 아카이브 경로가 되어 이중 기록(함수가 한 번, 트리거가 또 한 번)을 피한다.
+
+```sql
+-- rooms: 트리거가 archive_room()의 INSERT 본문을 그대로 흡수
+create or replace function public.archive_room_before_delete()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  insert into public.room_archives
+    (original_room_id, title, owner_id, max_members, is_private, member_ids, created_at, messages)
+  select
+    old.id, old.title, old.owner_id, old.max_members, old.is_private,
+    coalesce((select array_agg(rm.user_id) from public.room_members rm where rm.room_id = old.id), '{}'),
+    old.created_at,
+    coalesce((select jsonb_agg(jsonb_build_object(
+      'sender_id', m.sender_id, 'content', m.content,
+      'content_type', m.content_type, 'created_at', m.created_at
+    ) order by m.created_at) from public.messages m where m.room_id = old.id), '[]'::jsonb);
+  return old;
+end;
+$$;
+
+create trigger archive_room_before_delete
+  before delete on public.rooms
+  for each row execute function public.archive_room_before_delete();
+```
+
+`random_sessions`도 동일한 패턴이되, **실제 아카이브 주체를 정정**한다: `end_random_session()`은 이미 `status='ended'`로 UPDATE만 하고 끝나고(§`20260805030000` — Realtime UPDATE 전달을 위해 삭제를 의도적으로 지연시킴), 실제 삭제는 1분 간격 cron `archive_ended_random_sessions()`이 "종료된 지 60초 지난" 세션에 대해 수행한다. 이 함수가 지금 하는 수동 아카이브 INSERT를 제거하고 `delete from public.random_sessions where id = v_session.id`만 남긴다 — 트리거가 그 DELETE를 가로채 아카이브를 대신 남긴다. `ended_at`/`ended_by`는 이미 `end_random_session()`의 UPDATE로 채워져 있으므로 트리거가 보는 `old` 행에는 정상적으로 값이 들어있다. 계정 탈퇴로 인한 cascade처럼 `status='active'`인 채로(즉 `ended_at`이 아직 null인 채로) 삭제되는 경우에는 트리거가 `coalesce(old.ended_at, now())`/`coalesce(old.ended_by, null)`로 직접 채운다.
+
+이 변경 하나로 "탈퇴", "관리자 강제 삭제(Phase 7.5)", 향후 생길 수 있는 다른 삭제 경로 전부가 자동으로 안전해진다 — Phase 7.5 착수 시 별도 처리 불필요.
+
+> ⚠️ 트리거 함수도 `security definer` + `set search_path = ''`로 작성해 기존 컨벤션(§Phase 3 RLS 재귀 회피, §Phase 6 정리 배치)을 따른다. `room_archives`/`random_session_archives`는 `revoke all`이라 트리거가 아니면 어차피 아무도 못 쓴다.
+
+#### (2) 방장 강퇴 — 기존 함수 재사용, UI만 신규
+
+DB 쪽은 이미 완성되어 있으므로 서버 액션 한 겹 + UI만 추가한다.
+
+```
+클라(참여자 목록, 방장에게만 강퇴 버튼 노출)
+  → kickMemberAction(roomId, targetUserId)
+      서버: kick_member() RPC 호출 (방장 재검증은 함수 내부가 이미 수행 — 액션은 그대로 위임)
+      실패 시(RPC가 방장 아니면 raise) 에러를 ActionResult로 변환
+  → 성공 시 참여자 목록 로컬 갱신
+```
+
+강퇴당한 사용자에게 알리는 방법은 Phase 4에서 이미 구현된 "방 삭제 시 남은 참여자에게 실시간 안내" 패턴(Realtime + 클라이언트 리다이렉트)을 그대로 재사용한다 — `room_members` DELETE 이벤트를 강퇴 대상이 구독 중이면 그걸 신호로 방채팅 화면에서 강제 퇴장시키고 안내 토스트를 띄운다. 새 브로드캐스트 채널을 만들 필요는 없다.
+
+#### (3) 계정 탈퇴 — Admin API + 확인 절차
+
+```
+클라(프로필 페이지, "계정 탈퇴" 버튼)
+  → 확인 다이얼로그(되돌릴 수 없음 명시, 텍스트 입력 확인 등 오탈 방지 고려)
+  → deleteAccountAction()
+      서버: getClaims()로 로그인 상태 재검증(본인 확인은 세션 자체가 곧 본인이므로 별도 파라미터 불필요)
+            supabase.auth.admin.deleteUser(uid) 호출 (서비스 롤 키 사용 — Phase 6에서 이미
+            .env.local에 SUPABASE_SERVICE_ROLE_KEY 설정 완료, 새 서버 전용 admin 클라이언트
+            팩토리를 lib/supabase/admin.ts에 추가해 cron 라우트와 공유)
+            → auth.users 삭제 → profiles cascade
+            → rooms(owner였던 것)/random_sessions/room_members/random_queue 전부 cascade
+            → (1)의 트리거가 rooms/random_sessions 삭제마다 자동으로 아카이브 남김
+  → 성공 시 클라에서 signOut 처리 후 홈으로 리다이렉트
+```
+
+탈퇴 후 재로그인 불가는 `auth.users` 자체가 삭제되므로 별도 구현 없이 자연히 보장된다(PRD 수용 기준과 일치).
+
+#### (4) rate limit — DB 카운터 방식
+
+외부 서비스(Upstash 등) 신규 연동 없이 Postgres만으로 처리한다. MVP 트래픽 규모에서 Redis급 성능이 필요하지 않고, 이미 모든 쓰기가 SECURITY DEFINER 함수/서버 액션을 거치므로 카운터 체크를 끼워 넣기 쉽다.
+
+```sql
+create table public.rate_limit_events (
+  user_id uuid not null references auth.users(id) on delete cascade,
+  action text not null check (action in ('send_message', 'create_room', 'upload_image')),
+  created_at timestamptz not null default now()
+);
+
+create index rate_limit_events_user_action_idx
+  on public.rate_limit_events (user_id, action, created_at desc);
+
+-- 클라이언트는 이 테이블에 직접 쓰지 않는다 — 아래 함수를 통해서만 기록/확인
+revoke all on public.rate_limit_events from authenticated, anon;
+
+create or replace function public.check_and_record_rate_limit(
+  p_action text, p_max_count integer, p_window_seconds integer
+) returns boolean
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_count integer;
+begin
+  select count(*) into v_count
+  from public.rate_limit_events
+  where user_id = auth.uid()
+    and action = p_action
+    and created_at > now() - make_interval(secs => p_window_seconds);
+
+  if v_count >= p_max_count then
+    return false;
+  end if;
+
+  insert into public.rate_limit_events (user_id, action) values (auth.uid(), p_action);
+  return true;
+end;
+$$;
+```
+
+호출 지점: `sendRoomMessageAction`/`sendRandomMessageAction`(메시지), `createRoomAction`(방 생성), `createChatImageUploadUrlAction`(이미지 업로드 — Phase 6 이월 항목). 각 액션이 실제 쓰기 전에 `check_and_record_rate_limit()`을 호출해 `false`면 `RATE_LIMITED` 에러를 반환한다.
+
+구체적 한도(횟수/시간창)는 PRD에 수치가 없어 임의 결정이 필요하다 — **착수 시 아래 기본값으로 시작하고 필요시 조정**:
+
+| 액션 | 한도 |
+|---|---|
+| 메시지 전송 | 10초당 10회 |
+| 방 생성 | 1일 5회 |
+| 이미지 업로드 | 1분당 10회 |
+
+오래된 행 정리는 `room_archives`/`random_session_archives`와 동일하게 pg_cron 일 배치(`cleanup_old_rate_limit_events`, 예: 7일 이상 지난 행 삭제)로 처리한다.
+
+#### (5) 비참여 사용자 메시지 접근 차단 — 재검증만
+
+DB 정책은 이미 완성되어 있으므로(§7.0), 신규 구현 없이 검증 시나리오(§7.3)로 회귀 확인만 한다.
+
+### 7.2 태스크 — 파일 단위
+
+#### DB (마이그레이션)
+
+| # | 내용 |
+|---|---|
+| M1 | `archive_room_before_delete()` 트리거 함수 + `rooms` BEFORE DELETE 트리거, `leave_room()`에서 수동 아카이브 INSERT 제거 |
+| M2 | `archive_random_session_before_delete()` 트리거 함수 + `random_sessions` BEFORE DELETE 트리거, `archive_ended_random_sessions()`(cron, `end_random_session()` 아님)에서 수동 아카이브 INSERT 제거 |
+| M3 | `rate_limit_events` 테이블 + `check_and_record_rate_limit()` 함수 + `cleanup_old_rate_limit_events()` + pg_cron 등록 |
+
+#### 서버 액션
+
+| 파일 | 작업 |
+|---|---|
+| `lib/supabase/admin.ts` (신규) | 서비스 롤 키로 admin 클라이언트 생성하는 공용 팩토리(`app/api/cron/cleanup-chat-images/route.ts`의 인라인 생성 로직을 여기로 옮겨 재사용) |
+| `app/actions/rooms.ts` | `kickMemberAction(roomId, targetUserId)` 추가, `createRoomAction`에 rate limit 체크 삽입 |
+| `app/actions/profile.ts` (또는 `app/actions/account.ts` 신규) | `deleteAccountAction()` — `getClaims()` 재검증 + `admin.deleteUser()` |
+| `app/actions/messages.ts` | `sendRoomMessageAction`/`sendRandomMessageAction`에 rate limit 체크 삽입 |
+| `app/actions/chat-images.ts` | `createChatImageUploadUrlAction`에 rate limit 체크 삽입 (Phase 6 이월 항목) |
+
+#### 클라이언트
+
+| 파일 | 작업 |
+|---|---|
+| 방채팅 참여자 목록 컴포넌트 | 방장에게만 강퇴 버튼 노출 + 확인 다이얼로그 |
+| `lib/realtime/messages.ts` | 강퇴당한 본인이 `room_members` DELETE 이벤트를 받으면 강제 퇴장 처리(기존 "방 삭제 안내" 리다이렉트 로직과 통합) |
+| `app/(main)/profile/page.tsx` | "계정 탈퇴" 버튼에 확인 다이얼로그 + `deleteAccountAction` 연결 + 성공 시 signOut/리다이렉트 |
+| 메시지 전송/방 생성/이미지 업로드 UI | rate limit 초과 에러를 토스트로 표시 |
+
+#### 문서
+
+- `DB_SCHEMA.md` §5(room_bans 옆에 트리거 언급)·§8(SECURITY DEFINER 함수 표에 트리거 함수·rate limit 함수 추가), `rate_limit_events` 섹션 신규
+- `ARCHITECTURE.md`에 rate limit 설계 개요 추가
+- `npm run db:types` 재생성
+
+### 7.3 검증 시나리오
+
+1. **강퇴**: 방장이 참여자 강퇴 → 대상자 화면에서 즉시 강제 퇴장 + 안내. 일반 참여자가 `kick_member` RPC를 직접 호출(SQL/devtools) → 방장 아니므로 거부되는지 확인
+2. **재입장 차단**: 강퇴된 사용자가 같은 방에 다시 `join_room` 시도 → `banned_from_room` 거부
+3. **트리거 아카이브(핵심)**: 테스트 계정으로 방을 만들고 메시지를 보낸 뒤, `leave_room()`을 거치지 않고 **`delete from auth.users`로 직접 탈퇴 경로를 재현** → `room_archives`에 해당 방 기록이 남는지 SQL로 확인 (Phase 6 검증 때 이게 비어 있어서 문제를 발견했던 바로 그 시나리오 — 이번엔 남아야 통과)
+4. **탈퇴**: `deleteAccountAction()` 실행 후 동일 자격증명으로 재로그인 시도 → 실패 확인. 탈퇴 사용자가 방장이던 방의 남은 참여자에게 "방이 삭제되었습니다" 안내가 정상 도달하는지(기존 Phase 4 로직이 cascade delete에도 반응하는지) 확인
+5. **rate limit**: 메시지 전송을 한도 초과로 연타 → 초과분 거부 및 에러 응답 확인, 정상 사용자 흐름(한도 내)은 영향 없음 확인
+6. **비참여자 차단 재검증**: 방 미참여 계정으로 `messages` 직접 SELECT → 0건. 랜덤채팅 세션 비참여자도 동일
+7. `get_advisors(security)`로 신규 함수/테이블 점검
+
+### 7.4 구현 결과 (2026-08-09)
+
+계획대로 구현·검증 완료. 상세 검증 내역은 `ROADMAP.md` Phase 7 "구현 완료"/"검증 중 발견한 버그" 참고. 실제 검증은 Playwright MCP가 이 세션에서 사용 불가능해 전부 **SQL 직접 재현**(역할 전환 `set local role authenticated` + `request.jwt.claims`로 RLS·SECURITY DEFINER 함수를 실사용자 권한으로 호출)으로 수행했다. 계획과 달라진 점 2가지:
+
+1. **§7.1 (2) 방장 강퇴 "DB 쪽은 이미 완성되어 있다"는 전제가 틀렸다.** `kick_member()`가 `DB_SCHEMA.md`에는 Phase 3부터 문서화되어 있었지만 실제로는 어느 마이그레이션에도 없었다(`pg_proc` 조회 0건). 계획에 없던 함수 신규 구현이 추가됐다(`20260809000000_create_kick_member_function.sql`). 문서만 보고 "이미 있다"고 판단하지 말고 실제 DB를 조회로 확인해야 한다는 교훈 — Phase 6에서도 비슷하게 "문서와 실제가 다를 수 있다"는 걸 겪었지만(경로 규칙 등), 이번엔 아예 존재 여부 자체가 틀려 있었다.
+2. **§7.1 (1) 트리거 설계를 SQL로 직접 재현하다가 계획에 없던 FK 문제를 발견해 §7.1에 없던 마이그레이션이 추가됐다.** `messages.sender_id`/`room_bans.banned_by`가 `ON DELETE NO ACTION`이라 계정 탈퇴 자체가 FK 위반으로 실패했다(트리거가 도는지 여부와 무관하게 탈퇴가 안 됨). 사용자에게 CASCADE/SET NULL/시스템 placeholder 중 선택지를 제시해 **SET NULL**로 결정, `20260808050000_nullable_sender_and_banned_by_for_account_deletion.sql`로 처리하고 `lib/queries/rooms.ts`·`random.ts`에 "탈퇴한 사용자" 표시 로직을 추가했다. 계획 문서(§7.1 (3))에는 이 FK 문제가 전혀 언급되어 있지 않았다 — SQL로 실제 삭제를 재현해보지 않았다면 코드 리뷰만으로는 못 잡았을 문제.
+
+강퇴 실시간 알림도 계획에 없던 재설계가 있었다: 원래 "room_members DELETE Realtime 이벤트가 강퇴당한 본인에게도 그대로 전달된다"고 가정했으나, RLS가 postgres_changes 이벤트를 현재 테이블 상태 기준으로 재검증하는 특성상 본인 멤버십이 이미 사라진 뒤라 전달이 안 될 가능성이 컸다(Phase 4에서 "방 삭제 안내"를 `rooms` DELETE 채널로 별도 처리했던 것과 같은 종류의 함정). 강퇴 시 새로 생기는 `room_bans` 행을 구독하는 방식으로 바꾸고, 본인 조회 RLS 정책과 `room_bans`의 realtime publication 등록(기존에 빠져 있었음)을 추가했다.
+
+### 7.5 Phase 7.5로 이월
+
+- `check_and_record_rate_limit()`/`rate_limit_events`는 Phase 7.5 관리자 화면에서 "이상 활동 사용자" 조회에 재사용 가능 — 설계 시 참고
+- 강제 삭제(Phase 7.5)는 트리거 덕분에 별도 아카이브 처리 없이 안전 — `ROADMAP.md` Phase 7.5 경고 문구는 해제 완료
+- rate limit 기본값(메시지 10초당 10회, 방 생성 1일 5회, 이미지 업로드 1분당 10회)은 실사용 데이터 없이 정한 임의값이다. 실제 운영 데이터가 쌓이면 Phase 7.5 대시보드에서 재조정 검토
 
 ## Phase 7.5 — 관리자 페이지 — 개요만
 

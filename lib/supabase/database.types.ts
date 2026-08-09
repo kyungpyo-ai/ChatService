@@ -30,7 +30,7 @@ export type Database = {
           created_at: string;
           id: string;
           room_id: string | null;
-          sender_id: string;
+          sender_id: string | null;
           session_id: string | null;
         };
         Insert: {
@@ -39,7 +39,7 @@ export type Database = {
           created_at?: string;
           id?: string;
           room_id?: string | null;
-          sender_id: string;
+          sender_id?: string | null;
           session_id?: string | null;
         };
         Update: {
@@ -48,7 +48,7 @@ export type Database = {
           created_at?: string;
           id?: string;
           room_id?: string | null;
-          sender_id?: string;
+          sender_id?: string | null;
           session_id?: string | null;
         };
         Relationships: [
@@ -203,6 +203,24 @@ export type Database = {
         };
         Relationships: [];
       };
+      rate_limit_events: {
+        Row: {
+          action: string;
+          created_at: string;
+          user_id: string;
+        };
+        Insert: {
+          action: string;
+          created_at?: string;
+          user_id: string;
+        };
+        Update: {
+          action?: string;
+          created_at?: string;
+          user_id?: string;
+        };
+        Relationships: [];
+      };
       room_archives: {
         Row: {
           archived_at: string;
@@ -245,19 +263,19 @@ export type Database = {
       room_bans: {
         Row: {
           banned_at: string;
-          banned_by: string;
+          banned_by: string | null;
           room_id: string;
           user_id: string;
         };
         Insert: {
           banned_at?: string;
-          banned_by: string;
+          banned_by?: string | null;
           room_id: string;
           user_id: string;
         };
         Update: {
           banned_at?: string;
-          banned_by?: string;
+          banned_by?: string | null;
           room_id?: string;
           user_id?: string;
         };
@@ -372,7 +390,16 @@ export type Database = {
     Functions: {
       archive_ended_random_sessions: { Args: never; Returns: undefined };
       cancel_random_queue: { Args: never; Returns: undefined };
+      check_and_record_rate_limit: {
+        Args: {
+          p_action: string;
+          p_max_count: number;
+          p_window_seconds: number;
+        };
+        Returns: boolean;
+      };
       cleanup_old_random_session_archives: { Args: never; Returns: undefined };
+      cleanup_old_rate_limit_events: { Args: never; Returns: undefined };
       cleanup_old_room_archives: { Args: never; Returns: undefined };
       cleanup_stale_anonymous_users: { Args: never; Returns: undefined };
       cleanup_stale_random_queue: { Args: never; Returns: undefined };
@@ -391,6 +418,10 @@ export type Database = {
         Args: { p_password?: string; p_room_id: string };
         Returns: undefined;
       };
+      kick_member: {
+        Args: { p_room_id: string; p_target_user_id: string };
+        Returns: undefined;
+      };
       leave_room: { Args: { p_room_id: string }; Returns: undefined };
       list_orphaned_chat_images: { Args: never; Returns: string[] };
       match_or_wait: { Args: never; Returns: string };
@@ -398,6 +429,7 @@ export type Database = {
         Args: { r: Database["public"]["Tables"]["rooms"]["Row"] };
         Returns: number;
       };
+      room_member_joined_at: { Args: { p_room_id: string }; Returns: string };
     };
     Enums: {
       [_ in never]: never;

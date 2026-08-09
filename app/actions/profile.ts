@@ -8,6 +8,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import {
   setupProfileSchema,
   updateProfileSchema,
@@ -273,5 +274,45 @@ export async function checkUsernameAction(username: string): Promise<{ available
     return { available: isAvailable };
   } catch {
     return { available: false };
+  }
+}
+
+/**
+ * 계정 탈퇴 액션 (§ROADMAP Phase 7, PRD §4.1 AUTH-02)
+ *
+ * getClaims()로 로그인 상태를 재검증한 뒤(세션 자체가 본인 확인이므로 별도 파라미터는
+ * 받지 않는다), 서비스 롤 클라이언트로 auth.admin.deleteUser()를 호출한다.
+ *
+ * auth.users 삭제 → profiles가 on delete cascade로 함께 삭제되고, 이어서 그 사용자가
+ * 방장이던 rooms·참여 중이던 room_members·random_queue·random_sessions 등이 연쇄
+ * 삭제된다. rooms/random_sessions가 삭제되는 순간 BEFORE DELETE 트리거
+ * (archive_room_before_delete / archive_random_session_before_delete, §migration
+ * 20260808040000)가 무조건 아카이브를 남기므로 삭제 경로와 무관하게 대화 기록이
+ * 보존된다. 다른 사람 방/세션에 남긴 메시지의 sender_id는 ON DELETE SET NULL로 처리되어
+ * (§migration 20260808050000) 대화 자체는 지워지지 않고 "탈퇴한 사용자"로만 표시된다.
+ *
+ * 탈퇴 후 재로그인이 불가능한 것은 auth.users 자체가 삭제되므로 별도 구현 없이 보장된다.
+ */
+export async function deleteAccountAction(): Promise<ActionResult> {
+  try {
+    const supabase = await createClient();
+
+    const { data, error: authError } = await supabase.auth.getClaims();
+    const userId = data?.claims?.sub;
+
+    if (authError || !userId) {
+      return { success: false, message: "로그인이 필요합니다." };
+    }
+
+    const admin = createAdminClient();
+    const { error: deleteError } = await admin.auth.admin.deleteUser(userId);
+
+    if (deleteError) {
+      return { success: false, message: "계정 탈퇴에 실패했습니다." };
+    }
+
+    return { success: true, message: "" };
+  } catch {
+    return { success: false, message: "계정 탈퇴 중 오류가 발생했습니다." };
   }
 }

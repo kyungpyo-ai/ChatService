@@ -34,6 +34,7 @@ interface RoomLiveState {
   messages: ChatMessage[];
   participants: RoomMember[];
   roomDeleted: boolean;
+  kicked: boolean;
   sendMessage: (content: string) => Promise<void>;
   sendImageMessage: (file: File) => Promise<void>;
 }
@@ -75,6 +76,7 @@ export function useRoomMessages(
   const [messages, setMessages] = useState<ChatMessage[]>(initialMessages);
   const [participants, setParticipants] = useState<RoomMember[]>(initialParticipants);
   const [roomDeleted, setRoomDeleted] = useState(false);
+  const [kicked, setKicked] = useState(false);
   const participantsRef = useRef<RoomMember[]>(initialParticipants);
   const roomDeletedRef = useRef(false);
   // 내가 보낸 메시지 중 아직 Realtime INSERT로 되돌아오지 않은 것들의 대기 큐(FIFO)
@@ -173,6 +175,28 @@ export function useRoomMessages(
         )
         .subscribe();
 
+      // room_members DELETE 이벤트는 RLS 평가 시점에 이미 자기 자신의 멤버십 행이 사라진
+      // 뒤라, 강퇴당한 본인은 그 이벤트를 못 받을 가능성이 크다(§migration 20260809010000).
+      // 대신 강퇴 시점에 새로 INSERT되는 본인 소유 room_bans 행을 구독한다 — 본인 조회
+      // 정책이 별도로 있어 확실하게 전달된다.
+      const kickedChannel = supabase
+        .channel(`room-bans-${currentUserId}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "INSERT",
+            schema: "public",
+            table: "room_bans",
+            filter: `user_id=eq.${currentUserId}`,
+          },
+          (payload) => {
+            const row = payload.new as { room_id: string };
+            if (row.room_id !== roomId) return;
+            setKicked(true);
+          }
+        )
+        .subscribe();
+
       const memberChangeChannel = supabase
         .channel(`room-${roomId}-members`)
         .on(
@@ -243,7 +267,7 @@ export function useRoomMessages(
         )
         .subscribe();
 
-      channels = [messageChannel, roomDeletedChannel, memberChangeChannel];
+      channels = [messageChannel, roomDeletedChannel, kickedChannel, memberChangeChannel];
     })();
 
     return () => {
@@ -359,5 +383,5 @@ export function useRoomMessages(
     [roomId, currentUserId]
   );
 
-  return { messages, participants, roomDeleted, sendMessage, sendImageMessage };
+  return { messages, participants, roomDeleted, kicked, sendMessage, sendImageMessage };
 }

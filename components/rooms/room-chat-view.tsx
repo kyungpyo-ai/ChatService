@@ -10,7 +10,7 @@ import { ParticipantList, ParticipantSidePanel } from "@/components/rooms/partic
 import { LeaveRoomDialog } from "@/components/rooms/leave-room-dialog";
 import { useRoomMessages } from "@/lib/realtime/messages";
 import { useRoomPresence } from "@/lib/realtime/presence";
-import { leaveRoomAction } from "@/app/actions/rooms";
+import { kickMemberAction, leaveRoomAction } from "@/app/actions/rooms";
 import { showError, showInfo } from "@/lib/utils/toast";
 import type { RoomMember } from "@/lib/queries/rooms";
 
@@ -37,12 +37,8 @@ export function RoomChatView({
   const router = useRouter();
   const [participantsOpen, setParticipantsOpen] = useState(false);
   const [leaveDialogOpen, setLeaveDialogOpen] = useState(false);
-  const { messages, participants, roomDeleted, sendMessage, sendImageMessage } = useRoomMessages(
-    roomId,
-    initialMessages,
-    initialParticipants,
-    currentUserId
-  );
+  const { messages, participants, roomDeleted, kicked, sendMessage, sendImageMessage } =
+    useRoomMessages(roomId, initialMessages, initialParticipants, currentUserId);
   const onlineUserIds = useRoomPresence(roomId, currentUserId);
   const isOwner = participants.some((p) => p.id === currentUserId && p.isOwner);
   const memberCount = participants.length;
@@ -66,14 +62,29 @@ export function RoomChatView({
     return () => clearTimeout(timer);
   }, [roomDeleted, router]);
 
+  // 방장에게 강퇴당하면 room_bans INSERT를 실시간으로 받아 kicked가 true가 된다(§lib/realtime/messages).
+  useEffect(() => {
+    if (!kicked) return;
+    showInfo("방장에 의해 강퇴되었습니다.");
+    const timer = setTimeout(() => router.push("/rooms"), 1800);
+    return () => clearTimeout(timer);
+  }, [kicked, router]);
+
   const handleSend = (text: string) => {
-    if (roomDeleted) return;
+    if (roomDeleted || kicked) return;
     void sendMessage(text);
   };
 
   const handleSendImage = async (file: File) => {
-    if (roomDeleted) return;
+    if (roomDeleted || kicked) return;
     await sendImageMessage(file);
+  };
+
+  const handleKick = async (targetUserId: string) => {
+    const result = await kickMemberAction(roomId, targetUserId);
+    if (!result.success) {
+      showError(result.message);
+    }
   };
 
   const handleLeave = async () => {
@@ -104,6 +115,11 @@ export function RoomChatView({
             방장이 나가서 방이 삭제되었습니다. 잠시 후 방 목록으로 이동합니다.
           </div>
         )}
+        {kicked && (
+          <div className="bg-destructive/10 text-destructive px-4 py-2 text-center text-sm font-medium">
+            방장에 의해 강퇴되었습니다. 잠시 후 방 목록으로 이동합니다.
+          </div>
+        )}
 
         <div ref={scrollContainerRef} className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
           {messages.map((message) => (
@@ -115,15 +131,28 @@ export function RoomChatView({
           ))}
         </div>
 
-        <ChatInputBar onSend={handleSend} onSendImage={handleSendImage} disabled={roomDeleted} />
+        <ChatInputBar
+          onSend={handleSend}
+          onSendImage={handleSendImage}
+          disabled={roomDeleted || kicked}
+        />
       </div>
 
-      <ParticipantSidePanel participants={participants} onlineUserIds={onlineUserIds} />
+      <ParticipantSidePanel
+        participants={participants}
+        onlineUserIds={onlineUserIds}
+        currentUserId={currentUserId}
+        isOwner={isOwner}
+        onKick={handleKick}
+      />
       <ParticipantList
         participants={participants}
         open={participantsOpen}
         onOpenChange={setParticipantsOpen}
         onlineUserIds={onlineUserIds}
+        currentUserId={currentUserId}
+        isOwner={isOwner}
+        onKick={handleKick}
       />
       <LeaveRoomDialog
         open={leaveDialogOpen}

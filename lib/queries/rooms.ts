@@ -196,11 +196,14 @@ export async function getRoomMembers(roomId: string): Promise<RoomMember[]> {
 
 interface RoomMessageRow {
   id: string;
-  sender_id: string;
+  sender_id: string | null;
   content: string;
   content_type: string;
   created_at: string;
 }
+
+/** 탈퇴한 사용자가 남긴 메시지의 표시용 이름 (§ROADMAP Phase 7, sender_id ON DELETE SET NULL) */
+const DELETED_USER_NAME = "탈퇴한 사용자";
 
 /**
  * 방채팅 초기 메시지 목록 조회 (최근 50개) — 이후 실시간 갱신은 lib/realtime/messages.ts의 useRoomMessages가 담당
@@ -234,7 +237,9 @@ export async function getRoomMessages(roomId: string): Promise<ChatMessage[]> {
 
   const messages = [...latestMessages].reverse();
 
-  const senderIds = [...new Set(messages.map((m) => m.sender_id))];
+  const senderIds = [
+    ...new Set(messages.map((m) => m.sender_id).filter((id): id is string => id !== null)),
+  ];
 
   const { data: senders } = await supabase
     .from("profiles")
@@ -251,19 +256,21 @@ export async function getRoomMessages(roomId: string): Promise<ChatMessage[]> {
     .map((message) => message.content);
   const signedUrlByPath = await getSignedChatImageUrls(supabase, imagePaths);
 
-  return (messages as RoomMessageRow[])
-    .filter((message) => senderById.has(message.sender_id))
-    .map((message) => {
-      const sender = senderById.get(message.sender_id)!;
-      return {
-        id: message.id,
-        senderId: sender.id,
-        senderName: sender.username ?? "익명",
-        senderAvatarUrl: sender.avatar_url,
-        content: message.content_type === "text" ? message.content : "",
-        imageUrl:
-          message.content_type === "image" ? (signedUrlByPath.get(message.content) ?? null) : null,
-        createdAt: formatChatTime(message.created_at),
-      };
-    });
+  // sender_id가 null인 메시지는 보낸 사람이 탈퇴한 경우다(§ROADMAP Phase 7, ON DELETE
+  // SET NULL) — 메시지 자체는 계속 보이되 "탈퇴한 사용자"로 표시한다. 이전에는 sender를
+  // 못 찾으면 메시지 자체를 걸러냈지만, 탈퇴 후에는 항상 못 찾으므로 그러면 대화가 통째로
+  // 사라진다.
+  return (messages as RoomMessageRow[]).map((message) => {
+    const sender = message.sender_id ? senderById.get(message.sender_id) : undefined;
+    return {
+      id: message.id,
+      senderId: message.sender_id ?? "",
+      senderName: sender?.username ?? DELETED_USER_NAME,
+      senderAvatarUrl: sender?.avatar_url ?? null,
+      content: message.content_type === "text" ? message.content : "",
+      imageUrl:
+        message.content_type === "image" ? (signedUrlByPath.get(message.content) ?? null) : null,
+      createdAt: formatChatTime(message.created_at),
+    };
+  });
 }

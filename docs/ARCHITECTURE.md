@@ -229,8 +229,28 @@ sequenceDiagram
 | RLS | 모든 채팅 테이블(`rooms`, `room_members`, `messages`, `random_queue`, `random_sessions`)에 "참여자만 조회/쓰기" 정책 적용 |
 | 서버 액션 | 방 생성/입장/강퇴/탈퇴/매칭은 전부 서버 액션에서 `auth.uid()` 기준 권한 재검증 (클라이언트 입력 신뢰 안 함) |
 | 비밀번호방 | 원문 비교 없이 서버 액션에서 해시 비교만 수행 |
-| Rate limiting | 메시지 전송/방 생성에 기본 요청 횟수 제한 — MVP는 DB 카운터 테이블 또는 Vercel Marketplace의 Upstash Redis 중 `DEVELOPMENT_PLAN.md`에서 선택 |
+| Rate limiting | 메시지 전송/방 생성/이미지 업로드에 기본 요청 횟수 제한 — 아래 참고 |
 | 환경 변수 | `SUPABASE_SERVICE_ROLE_KEY` 등 서버 전용 키는 서버 액션/Route Handler 내부에서만 사용, 클라이언트 번들에 노출 금지 |
+| 계정 탈퇴 아카이브 보장 | `rooms`/`random_sessions` BEFORE DELETE 트리거가 삭제 경로(정상 나가기, 계정 탈퇴 cascade, 관리자 강제 삭제)와 무관하게 `room_archives`/`random_session_archives`에 스냅샷을 남긴다. 다른 사람 방/세션에 남긴 메시지는 `sender_id` `on delete set null`로 보존되고 "탈퇴한 사용자"로 표시된다(§Phase 7) |
+
+### Rate limiting (Phase 7)
+
+외부 서비스(Upstash 등) 없이 Postgres 카운터 테이블(`rate_limit_events`)로 구현했다. MVP
+트래픽 규모에서 Redis급 성능이 필요하지 않고, 이미 모든 쓰기가 SECURITY DEFINER 함수/서버
+액션을 거치므로 카운터 체크를 끼워 넣기 쉽다는 판단이다.
+
+```
+서버 액션(메시지 전송/방 생성/이미지 업로드 URL 발급)
+  → check_and_record_rate_limit(action, max_count, window_seconds) RPC
+      최근 window_seconds초 내 해당 action 기록 수가 max_count 미만이면
+      기록 후 true, 이상이면 기록 없이 false
+  → false면 클라이언트에 "요청 횟수 제한" 에러 반환 (기존 ActionResult 에러 경로 재사용)
+```
+
+한도는 메시지 전송(10초당 10회)·방 생성(1일 5회)·이미지 업로드(1분당 10회) — PRD에 구체적
+수치가 없어 임의로 정한 기본값이며, 함수 호출 실패 시(네트워크 등) 정상 이용을 막지 않도록
+사용자를 통과시킨다(rate limit은 부가 방어선이지 주 기능이 아니라는 판단). 오래된 기록은
+`cleanup_old_rate_limit_events()`가 pg_cron으로 7일 지난 것을 매일 정리한다.
 
 ---
 

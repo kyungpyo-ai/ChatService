@@ -49,7 +49,7 @@ export async function getRandomSessionForUser(
 
 interface RandomMessageRow {
   id: string;
-  sender_id: string;
+  sender_id: string | null;
   content: string;
   content_type: string;
   created_at: string;
@@ -91,7 +91,7 @@ export async function getRandomSessionMessages(
 
   return (data as RandomMessageRow[]).map((message) => ({
     id: message.id,
-    senderId: message.sender_id,
+    senderId: message.sender_id ?? "",
     senderName: message.sender_id === currentUserId ? "나" : "상대방",
     content: message.content_type === "text" ? message.content : "",
     imageUrl:
