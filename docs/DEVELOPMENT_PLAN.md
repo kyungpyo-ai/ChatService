@@ -2,8 +2,8 @@
 
 > 이 문서는 `ROADMAP.md`의 Phase를 실제 파일/컴포넌트/함수 단위 태스크로 분해한 것이다. **바로 착수하는 Phase만 상세히 작성**하고, 이후 Phase는 착수 직전에 이 문서를 갱신해 상세화한다 — 먼 미래 Phase를 지금 촘촘히 계획해봐야 실제 착수 시점에 요구사항/설계가 바뀔 가능성이 크기 때문이다.
 
-- 상세 작성됨: **Phase 2 — UI 뼈대 및 디자인 시스템**, **Phase 3 — 방채팅(텍스트)**, **Phase 4 — 방 나가기/온라인 상태/사용자 검색**, **Phase 5 — 랜덤채팅(텍스트)**, **Phase 5.5 — 랜덤채팅 Presence 기반 재설계**, **Phase 6 — 이미지 전송**, **Phase 7 — 권한 검증 및 계정 관리**
-- 개요만 있음: Phase 7.5~10 (해당 Phase 착수 시 이 문서에 상세 추가)
+- 상세 작성됨: **Phase 2 — UI 뼈대 및 디자인 시스템**, **Phase 3 — 방채팅(텍스트)**, **Phase 4 — 방 나가기/온라인 상태/사용자 검색**, **Phase 5 — 랜덤채팅(텍스트)**, **Phase 5.5 — 랜덤채팅 Presence 기반 재설계**, **Phase 6 — 이미지 전송**, **Phase 7 — 권한 검증 및 계정 관리**, **Phase 7.5 — 관리자 페이지(사이트 운영)**
+- 개요만 있음: Phase 8~10 (해당 Phase 착수 시 이 문서에 상세 추가)
 
 ---
 
@@ -1111,16 +1111,272 @@ DB 정책은 이미 완성되어 있으므로(§7.0), 신규 구현 없이 검�
 - 강제 삭제(Phase 7.5)는 트리거 덕분에 별도 아카이브 처리 없이 안전 — `ROADMAP.md` Phase 7.5 경고 문구는 해제 완료
 - rate limit 기본값(메시지 10초당 10회, 방 생성 1일 5회, 이미지 업로드 1분당 10회)은 실사용 데이터 없이 정한 임의값이다. 실제 운영 데이터가 쌓이면 Phase 7.5 대시보드에서 재조정 검토
 
-## Phase 7.5 — 관리자 페이지 — 개요만
+## Phase 7.5 — 관리자 페이지 (사이트 운영) (상세)
 
-`ROADMAP.md` Phase 7.5 참고. 착수 시 아래를 결정·상세화한다.
+### 7.5.0 범위와 전제
 
-- 관리자 판별 방식 (`profiles.role` 재사용 + `is_admin()` SECURITY DEFINER 함수 — RLS 재귀 주의)
-- `/admin/*` 라우트 구조와 미들웨어 차단 방식 (404 vs 리다이렉트)
-- 관리자 전용 조회 경로 설계 (일반 사용자 RLS를 건드리지 않는 방향)
-- 대화/이미지 열람 UI 구성과 Storage 관리자 접근 방식
-- 신고 접수(일반 사용자) ↔ 신고 처리 큐(관리자) 데이터 모델
-- 감사 로그 테이블 설계 및 기록 범위 (조치만 vs 열람 포함)
+`ROADMAP.md` Phase 7.5의 4개 그룹(접근 제어, 대화 내용 조회, 사용자 관리, 운영 기능)을 다룬다. `rooms`/`random_sessions` BEFORE DELETE 트리거(§Phase 7)가 이미 삭제 경로 전부에 아카이브를 보장하므로, 이번 Phase는 **별도 아카이브 안전장치 없이** 조회·조치 UI만 구현하면 된다.
+
+| 제외 항목 | 이유 / 실제 착수 시점 |
+|---|---|
+| 콘텐츠 자동 검수(이미지 매직바이트 검사 등) | `ROADMAP.md` Phase 10, 범위 외. 신고 큐는 사람이 직접 열람해 판단하는 방식으로 충분 |
+| 계정 정지 기간 만료 자동 해제 배치 | 최초 구현은 수동 해제만 지원(관리자가 다시 활성화). 자동 만료는 실사용 데이터를 보고 이후 결정 |
+| 관리자 초대/역할 관리 UI | `profiles.role='admin'`은 이번 Phase에서 Supabase MCP로 직접 SQL UPDATE해 1인 운영자를 지정. 여러 관리자·권한 등급 구분은 범위 밖 |
+| 신고 사유 카테고리 커스터마이징 | 고정된 enum(스팸/욕설·혐오/불법콘텐츠/기타)으로 시작 |
+
+### 7.5.1 접근 제어 설계
+
+- **판별 컬럼**: `profiles.role`는 이미 존재하며(`role text not null default 'user'`, 체크 제약 없음 — `supabase/migrations/20260726000000_create_profiles_table.sql`), `'admin'` 값을 코드 레벨 상수로만 정의한다(DB 체크 제약은 추가하지 않아 향후 역할 확장에 열어둠).
+- **`is_admin()` SECURITY DEFINER 함수**: `auth.uid()`로 `profiles.role = 'admin'`을 확인해 boolean 반환. `profiles` SELECT RLS를 다시 타지 않도록 함수 내부에서 `set search_path = ''`로 직접 테이블을 조회 — Phase 3의 `room_members` 자기 참조 무한 재귀와 같은 함정을 피하기 위해 **관리자 판별 함수는 어떤 정책의 `using`/`with check` 절에서도 재귀적으로 자기 자신이 걸려 있는 테이블을 다시 정책 평가로 조회하지 않는다**(SECURITY DEFINER는 RLS를 우회하므로 원천적으로 안전하지만, 실수로 일반 클라이언트 supabase 인스턴스를 재사용하지 않도록 함수 본문에서 검토).
+- **라우트 보호는 미들웨어가 아니라 화면(레이아웃) 레벨에서** — `/rooms/new`가 로그인 여부를 화면에서 판별하던 기존 패턴(§3.4)과 동일하게, `middleware.ts`의 `isPublicPath`에 `/admin`을 추가하지 않아 **로그인 자체는 기존 로직대로 미들웨어가 막고**(비로그인 → `/auth/login`), 그 위에 `app/admin/layout.tsx`(Server Component)가 `is_admin()` RPC를 호출해 관리자가 아니면 `notFound()`로 404를 반환한다(리다이렉트 대신 404를 선택 — 관리자 경로가 존재한다는 사실 자체를 비관리자에게 노출하지 않기 위해, `ROADMAP.md` Phase 7.5 접근 제어 항목의 "존재 자체를 노출하지 않는 쪽" 결정).
+- **모든 관리자 서버 액션/Route Handler는 자체적으로 `is_admin()`을 재검증**한다 — 레이아웃의 404는 화면 진입만 막을 뿐, 액션 호출 자체는 별도 방어선이 필요하다(이 프로젝트에서 반복된 "서버 측 재검증" 원칙, §Phase 7).
+
+### 7.5.2 DB 마이그레이션
+
+| # | 파일명 | 내용 |
+|---|---|---|
+| 1 | `20260810000000_create_is_admin_function.sql` | `is_admin()` SECURITY DEFINER 함수(§7.5.1) |
+| 2 | `20260810010000_create_reports_table.sql` | `reports` 테이블 + RLS(§7.5.3) — 신고자는 자신이 만든 신고만 INSERT/SELECT, 관리자는 `is_admin()`으로 전체 SELECT/UPDATE 허용 |
+| 3 | `20260810020000_create_admin_audit_logs_table.sql` | `admin_audit_logs` 테이블 + RLS — SELECT는 `is_admin()`만, INSERT/UPDATE/DELETE는 `authenticated`/`anon`에게서 전부 REVOKE(§7.5.6 로깅 함수로만 기록) |
+| 4 | `20260810030000_create_admin_read_functions.sql` | 관리자 전용 조회 SECURITY DEFINER 함수 모음(§7.5.4) — `admin_search_rooms(query)`(진행 중), `admin_get_room_messages(room_id)`, `admin_get_room_archive_list(query)`/`admin_get_room_archive_detail(archive_id)`, `admin_search_random_sessions(query)`(진행 중 — 참여자 id/기간), `admin_get_random_session_messages(session_id)`, `admin_get_random_archive_list(query)`/`admin_get_random_archive_detail(archive_id)`, `admin_search_users(query)`, `admin_get_user_detail(user_id)`. 전부 시작부에 `if not is_admin() then raise exception 'not_authorized'; end if;`로 재검증 |
+| 5 | `20260810040000_create_admin_action_functions.sql` | 관리자 조치 SECURITY DEFINER 함수 모음(§7.5.5) — `admin_force_delete_room(room_id, reason)`, `admin_force_end_random_session(session_id, reason)`, `admin_suspend_user(user_id, reason, until)`, `admin_unsuspend_user(user_id)`, `admin_force_delete_account(user_id, reason)`, `admin_resolve_report(report_id, action_taken)`, `admin_dismiss_report(report_id)`. 각 함수 마지막에 `admin_audit_logs` INSERT(§7.5.6) |
+| 6 | `20260810050000_add_suspension_columns_to_profiles.sql` | `profiles`에 `suspended_at timestamptz`, `suspended_until timestamptz`, `suspended_reason text` 추가 — 정지 여부는 `suspended_until is null or suspended_until > now()`로 판단(정지 이력은 남기고 해제 시 `suspended_until = now()`로 갱신, 행 삭제 안 함) |
+| 7 | `20260810060000_block_suspended_users_from_actions.sql` | `join_room()`, `match_or_wait()`, `sendRoomMessageAction`이 참조하는 메시지 INSERT RLS 등 기존 SECURITY DEFINER 함수 상단에 정지 여부 체크 추가(정지된 계정은 로그인은 되지만 방 입장/매칭/메시지 전송이 거부됨) — 로그인 자체를 막지 않는 이유: 강제 탈퇴와 달리 "정지"는 재로그인 시 상태를 확인할 수 있어야 하므로 |
+| 8 | `20260810070000_add_messages_content_trgm_index.sql` | `messages`에 `content_type = 'text'`인 행만 대상으로 하는 부분 GIN trgm 인덱스 추가(`create index messages_content_trgm_idx on public.messages using gin (content gin_trgm_ops) where content_type = 'text'`) — §7.5.7 메시지 검색(진행 중 메시지 쪽)이 순차 스캔 없이 `ilike '%keyword%'`를 태우기 위함. `pg_trgm` 확장은 Phase 3에서 이미 활성화됨(`profiles_username_trgm_idx`와 동일 패턴) |
+| 9 | `20260810080000_create_admin_search_messages_function.sql` | `admin_search_messages(p_query text, p_date_from timestamptz, p_date_to timestamptz, p_scope text default 'all')` SECURITY DEFINER 함수(§7.5.7) |
+
+마지막에 `mcp__supabase__generate_typescript_types`로 `lib/supabase/database.types.ts` 재생성.
+
+### 7.5.3 `reports` / `admin_audit_logs` 스키마
+
+```sql
+create table public.reports (
+  id uuid primary key default gen_random_uuid(),
+  reporter_id uuid references auth.users(id) on delete set null,
+  target_type text not null check (target_type in ('room', 'random_session', 'message', 'user')),
+  target_id uuid not null,
+  reason text not null check (reason in ('spam', 'abuse', 'illegal', 'other')),
+  detail text,
+  status text not null default 'pending' check (status in ('pending', 'resolved', 'dismissed')),
+  reviewed_by uuid references auth.users(id) on delete set null,
+  reviewed_at timestamptz,
+  action_taken text,
+  created_at timestamptz not null default now()
+);
+
+create index reports_status_created_idx on public.reports (status, created_at desc);
+
+alter table public.reports enable row level security;
+revoke all on public.reports from public, anon;
+
+-- 신고자는 자신이 만든 신고만 조회, 관리자는 전체 조회/처리
+create policy "reporters can view own reports"
+  on public.reports for select to authenticated
+  using (reporter_id = auth.uid() or public.is_admin());
+
+create policy "authenticated can create reports"
+  on public.reports for insert to authenticated
+  with check (reporter_id = auth.uid());
+-- UPDATE는 정책 없음 — admin_resolve_report()/admin_dismiss_report() SECURITY DEFINER 함수로만 처리
+```
+
+```sql
+create table public.admin_audit_logs (
+  id uuid primary key default gen_random_uuid(),
+  admin_id uuid not null references auth.users(id) on delete set null,
+  action text not null,             -- 'force_delete_room' | 'suspend_user' | ... (§7.5.2 함수명과 1:1 매칭)
+  target_type text not null,
+  target_id uuid,
+  detail jsonb,
+  created_at timestamptz not null default now()
+);
+
+create index admin_audit_logs_created_idx on public.admin_audit_logs (created_at desc);
+
+alter table public.admin_audit_logs enable row level security;
+revoke all on public.admin_audit_logs from public, anon, authenticated;
+
+create policy "admins can view audit logs"
+  on public.admin_audit_logs for select to authenticated
+  using (public.is_admin());
+-- INSERT는 정책 없음 — 관리자 조치 함수 내부에서 SECURITY DEFINER로만 기록, 클라이언트가 직접 못 씀
+```
+
+기록 범위는 "조치만"으로 한정한다(단순 열람까지 감사 로그에 남기면 §7.5.4의 조회 함수 호출마다 INSERT가 발생해 대시보드 클릭 한 번에도 로그가 쌓이는 부담이 있고, PRD상 요구되는 것은 제재 조치의 추적성이므로).
+
+### 7.5.4 신규/변경 파일 — 대화·이미지 조회
+
+`chat-images` Storage RLS는 "해당 방/세션의 현재 참여자"에게만 SELECT를 허용하므로(§Phase 6), 방이 삭제되거나 세션이 종료되면 관리자 계정으로도 일반 클라이언트로는 조회할 수 없다. 관리자 열람은 **서비스 롤 키 경로**로만 만든다.
+
+**설계 수정(사용자 피드백 반영)**: 최초 초안은 "진행 중인 방"(`/admin/rooms`)과 "종료된 방 아카이브"(`/admin/archives/rooms`)를 서로 다른 메뉴로 분리했고, **랜덤채팅은 진행 중인 세션을 조회하는 화면 자체가 아예 빠져 있었다**(아카이브만 있었음). "관리자가 지금 진행 중인 방채팅/랜덤채팅과 종료된 방채팅/랜덤채팅을 편리하게 확인하는 것"이 이 Phase의 핵심 요구사항이므로, 아래처럼 **방채팅/랜덤채팅 각각 하나의 화면 안에서 "진행 중" / "종료됨" 탭으로 전환**하는 구조로 바꾼다 — 관리자가 별도 메뉴를 오가지 않고 한 화면에서 상태만 탭으로 바꿔가며 확인할 수 있다.
+
+| 파일 | 상태 | 설명 |
+|---|---|---|
+| `lib/queries/admin.ts` | 신규 | `getDashboardStats()`, `getActiveRoomList(query)`/`getRoomArchiveList(query)`, `getRoomMessageTimeline(roomId)`(`admin_get_room_messages` RPC), `getRoomArchiveDetail(archiveId)`, `getActiveRandomSessionList(query)`/`getRandomArchiveList(query)`, `getRandomSessionTimeline(sessionId)`(`admin_get_random_session_messages` RPC), `getRandomArchiveDetail(archiveId)`, `searchAdminUsers(query)`(`admin_search_users` RPC), `getAdminUserDetail(userId)`, `getReportQueue(status)`, `getReportDetail(id)`, `getRateLimitAnomalies()`(`rate_limit_events` 집계 — §Phase 7 "이월" 메모대로 재사용), `getCronJobStatus()`(`cron.job_run_details` 조회, Supabase가 `pg_cron` 확장에 제공하는 시스템 뷰) — 전부 `is_admin()` RPC가 지켜주는 SECURITY DEFINER 함수 위에서 동작하므로 함수 자체는 얇게 유지 |
+| `app/actions/admin.ts` | 신규 | `forceDeleteRoomAction`, `forceEndRandomSessionAction`(§7.5.5, 진행 중인 랜덤 세션 강제 종료 — 방 강제 삭제와 대응되는 랜덤채팅 쪽 조치), `suspendUserAction`, `unsuspendUserAction`, `forceDeleteAccountAction`(`auth.admin.deleteUser` 호출 전 `admin_audit_logs` 기록 — 계정 탈퇴 액션과 동일하게 `createAdminClient()` 사용), `resolveReportAction`, `dismissReportAction`. 각 액션은 (1) `getClaims()`로 로그인 확인 (2) `is_admin()` RPC로 재검증 (3) DB 함수 호출 순서 — RPC/DB 함수가 이미 `is_admin()`을 검사하지만 액션 레벨에서도 얇게 재확인해 잘못된 UI 노출 시에도 조기에 거부 |
+| `app/api/admin/chat-image-url/route.ts` | 신규 | GET Route Handler, `?path=` 쿼리로 Storage 경로를 받는다. 요청자의 세션 supabase 클라이언트로 `is_admin()` RPC 확인 → 통과 시 `createAdminClient()`(서비스 롤)로 `createSignedUrl()` 발급해 반환. RLS를 완전히 우회하므로 이 라우트 자체가 유일한 방어선 — 반드시 라우트 안에서 매 요청마다 `is_admin()`을 확인하고, 절대 경로 파라미터를 검증 없이 그대로 서비스 롤 클라이언트에 넘기지 않는다(`lib/storage/chat-images.ts`의 `parseChatImagePath()`로 형식 검증 후 사용). **진행 중인 방/세션의 이미지도 이 경로 하나로 통일**해서 쓴다 — 참여자 기준 RLS로 조회되는 일반 서명 URL 발급과 별도로 관리자 전용 경로를 유지해야 진행 중/종료 여부에 따라 두 가지 발급 방식을 분기하지 않아도 된다(§`components/admin/message-timeline.tsx`가 활성/아카이브 여부와 무관하게 항상 이 라우트만 호출) |
+| `app/admin/layout.tsx` | 신규 | Server Component. `supabase.auth.getUser()` + `is_admin()` RPC → 실패 시 `notFound()`(§7.5.1). `AdminSidebar` + 컨텐츠 영역 렌더링. `(main)` 그룹과 분리된 별도 레이아웃(`BottomNav`/`SidebarNav` 없음) |
+| `app/admin/page.tsx` | 신규 | 대시보드 — 가입자 수, DAU(`last_seen_at` 24시간 이내), 활성 방/랜덤 세션 수, 오늘 메시지 수, 대기 중 신고 수, `rate_limit_events` 이상 활동 상위 N명. "진행 중인 방/세션" 카드는 각각 §아래 목록 화면으로 바로 링크(관리자가 대시보드에서 곧장 지금 벌어지고 있는 대화로 진입) |
+| `app/admin/rooms/page.tsx` | 신규 | **방채팅 통합 조회 화면**. 상단 탭 `진행 중`/`종료됨` — `진행 중` 탭은 `getActiveRoomList()`(제목·방장 닉네임 검색, 실시간 인원수 표시), `종료됨` 탭은 `getRoomArchiveList()`(`room_archives` 검색, 삭제 시각·삭제 사유 표시). 탭 상태는 `?status=active\|archived` 쿼리로 관리해 URL 공유·새로고침에도 유지 |
+| `app/admin/rooms/[roomId]/page.tsx` | 신규 | 진행 중인 방 상세 — `MessageTimeline`(실시간 갱신, §아래) + 참여자 목록 + "강제 삭제" 버튼(`ConfirmDialog` + 사유 입력) |
+| `app/admin/rooms/archived/[archiveId]/page.tsx` | 신규 | 종료된 방 상세 — 스냅샷 시점의 제목/참여자 목록/전체 메시지를 `MessageTimeline`으로 표시(읽기 전용, 조치 버튼 없음 — 이미 삭제된 방이므로) |
+| `app/admin/random/page.tsx` | 신규 | **랜덤채팅 통합 조회 화면(신규 — 최초 초안엔 없었음)**. 상단 탭 `진행 중`/`종료됨` — `진행 중` 탭은 `getActiveRandomSessionList()`(참여자 id·시작 시각), `종료됨` 탭은 `getRandomArchiveList()`(`random_session_archives` 검색, 참여자 id/기간). 랜덤채팅은 신원이 익명이라 검색은 사용자 id 또는 기간 기준으로만 가능(닉네임 검색 불가 — PRD상 랜덤채팅 자체가 익명 대화라는 전제와 일관) |
+| `app/admin/random/[sessionId]/page.tsx` | 신규 | 진행 중인 랜덤 세션 상세(신규) — `MessageTimeline` + "세션 강제 종료" 버튼. 종료 즉시 §Phase 5.5의 기존 종료 파이프라인(`end_random_session`)을 관리자 컨텍스트에서 호출해 60초 뒤 자동 아카이브되는 기존 흐름을 그대로 탄다 |
+| `app/admin/random/archived/[archiveId]/page.tsx` | 신규 | 종료된 랜덤 세션 상세 — 스냅샷 메시지를 `MessageTimeline`으로 표시(읽기 전용) |
+| `app/admin/users/page.tsx` | 신규 | 회원 목록(`profiles`, 게스트 제외) — 닉네임/이메일/가입일/최근 접속/정지 상태, 검색·정렬. 게스트 현황(`guest_profiles` count, 최근 정리 배치 실행 시각)은 이 페이지 상단 요약 카드로 함께 표시 |
+| `app/admin/users/[userId]/page.tsx` | 신규 | 회원 상세 — 참여 중인 방, 최근 대화 이력(아카이브 포함, 위 통합 화면으로 링크), 본인 대상 신고 이력, "정지"/"정지 해제"/"강제 탈퇴" 액션 |
+| `app/admin/reports/page.tsx` | 신규 | 신고 큐 — 상태별(대기/처리완료/기각) 탭, 대상 유형·사유·신고일 목록 |
+| `app/admin/reports/[reportId]/page.tsx` | 신규 | 신고 상세 — 대상(방/세션/메시지/사용자) 컨텍스트 미리보기 링크(위 통합 조회 화면의 상세 페이지로 직결) + "처리"(조치 내용 입력)/"기각" 액션 |
+| `app/admin/system/page.tsx` | 신규 | pg_cron 배치 최근 실행 결과(게스트 정리, 아카이브 정리, 유령 세션 정리, 채팅 이미지 정리) — `cron.job_run_details` 조회 |
+| `components/admin/admin-sidebar.tsx` | 신규 | 관리자 전용 좌측 네비(대시보드/방채팅/랜덤채팅/회원/신고/시스템) — "아카이브"는 별도 메뉴로 두지 않고 방채팅/랜덤채팅 화면 내부 탭으로 흡수. 일반 `SidebarNav`와 별도 컴포넌트로 분리(권한 성격이 다른 화면을 같은 컴포넌트에 조건부로 섞지 않기 위해) |
+| `components/admin/data-table.tsx` | 신규 | 기존 `components/ui/table.tsx` 위에 페이지네이션·검색 인풋을 얹은 얇은 래퍼 — 방/세션/회원/신고 목록 화면 공통 사용 |
+| `components/admin/status-tabs.tsx` | 신규 | `진행 중`/`종료됨` 탭 UI(shadcn `Tabs` 래핑) + `?status=` 쿼리 동기화 — 방채팅/랜덤채팅 통합 화면 공통 사용 |
+| `components/admin/message-timeline.tsx` | 신규 | 방/세션 메시지를 시간순으로 렌더링, 진행 중/종료됨(아카이브) 데이터 형태 차이를 `props`로 흡수해 **동일한 컴포넌트로 양쪽을 렌더링**(관리자 입장에서 "진행 중이든 종료됐든 같은 방식으로 읽힌다"는 일관성이 목적). 이미지 메시지는 `/api/admin/chat-image-url?path=...`를 호출해 받은 서명 URL로 표시(기존 `ChatMessageBubble` 재사용하지 않고 열람 전용 단순 뷰로 별도 작성 — 관리자 화면은 전송 UI가 필요 없음) |
+| `components/admin/report-action-panel.tsx` | 신규 | 신고 상세의 처리/기각 폼 |
+| `components/admin/suspend-user-dialog.tsx` | 신규 | 정지 사유 + 기간(select: 1일/7일/30일/영구) 입력 다이얼로그 |
+| `components/rooms/report-button.tsx`, `components/random/report-button.tsx` | 신규 | **일반 사용자 화면**에 추가하는 신고 진입점(§7.5.0 신고 접수 UI는 관리자 화면이 아니라 일반 채팅 화면에 필요, `ROADMAP.md` 운영 기능 항목 참고) — `ChatHeader`의 더보기 메뉴에 "신고하기" 추가, 사유 선택 다이얼로그 → `createReportAction` 호출 |
+| `app/actions/reports.ts` | 신규 | `createReportAction(targetType, targetId, reason, detail)` — 로그인 확인(`getClaims()`) 후 `reports` INSERT. 게스트(익명 세션)도 랜덤채팅에서는 신고할 수 있어야 하므로 `authenticated`(익명 세션 포함) 기준으로 허용 — `join_room`류와 동일하게 익명 세션도 `authenticated` role이라는 이 프로젝트의 기존 전제를 따름 |
+
+### 7.5.5 관리자 조치 함수 설계 메모
+
+- `admin_force_delete_room(room_id, reason)`: `rooms` DELETE 실행 — BEFORE DELETE 트리거(§Phase 7)가 자동으로 `room_archives`에 스냅샷을 남기므로 함수는 삭제 + 감사 로그 기록만 하면 된다.
+- `admin_force_end_random_session(session_id, reason)`: 방 강제 삭제와 대응되는 랜덤채팅 쪽 조치 — `random_sessions.status`를 `'ended'`로 갱신(기존 `end_random_session()`과 동일하게 상태만 바꾸고 즉시 삭제하지 않음, §Phase 5.5의 "종료 실시간 알림 누락" 수정과 같은 이유로 삭제는 60초 지연 cron이 처리) → 남아있던 상대방 화면에도 기존 세션 종료 파이프라인(Presence/하트비트 감지와 무관하게 이 UPDATE 자체가 트리거) 그대로 반영된다. 새 삭제/아카이브 경로를 따로 만들지 않고 기존 흐름에 편승하는 것이 핵심.
+- `admin_force_delete_account(user_id, reason)`: 기존 계정 탈퇴 서버 액션이 쓰는 `auth.admin.deleteUser`와 동일 경로를 관리자 컨텍스트에서 호출 — `profiles` 삭제 → 소유 `rooms` cascade 삭제 → 트리거가 각각 아카이브. 탈퇴 액션과 로직을 공유할 수 있으면 `app/actions/account.ts`의 핵심 삭제 함수를 재사용하고 admin 쪽은 "본인 확인" 단계만 "대상 user_id + 관리자 권한 확인"으로 바꾼 얇은 래퍼로 구현(중복 구현 방지).
+- `admin_suspend_user(user_id, reason, until)` / `admin_unsuspend_user`: `profiles.suspended_*` 컬럼만 갱신 — 로그인·조회는 막지 않고, §7.5.2 (7)에서 추가하는 행위별 체크(방 입장/매칭/메시지 전송/이미지 업로드)만 거부한다.
+- `admin_resolve_report(report_id, action_taken)` / `admin_dismiss_report(report_id)`: `reports.status`/`reviewed_by`/`reviewed_at`/`action_taken` 갱신. 조치(강제 삭제·정지)는 관리자가 신고 상세 화면에서 별도 버튼으로 먼저 실행한 뒤 "처리 완료"로 신고를 닫는 2단계 흐름 — 신고 처리 자체가 자동으로 강제 조치를 트리거하지 않는다(오탐 신고로 즉시 삭제되는 사고 방지).
+
+### 7.5.6 메시지 내용 검색 (사용자 피드백 반영 — 신규)
+
+`ROADMAP.md` Phase 7.5의 "기간·사용자·키워드 기준 메시지 검색" 항목을 구체화한다. 대화 내용을 진행 중 메시지와 아카이브(jsonb 스냅샷) 양쪽에서 검색해야 하는데, 두 저장 형태의 검색 비용이 서로 다르다는 점이 설계의 핵심이다.
+
+- **진행 중 메시지**(`messages` 테이블, 행 단위 저장): §7.5.2 (8)의 부분 trgm 인덱스로 `ilike` 검색이 인덱스를 타므로 날짜 범위 없이도 비교적 저렴하지만, 그래도 기본 검색 범위는 최근 7일로 좁혀 결과를 좁힌다(넓히려면 사용자가 직접 날짜를 늘림).
+- **아카이브 메시지**(`room_archives`/`random_session_archives.messages jsonb`, **행 하나가 대화 전체를 통째로 담고 있어 인덱스를 태우기 어려움**): `jsonb_array_elements(messages)`로 펼쳐서 검색해야 하므로, **날짜 범위(`archived_at`/`started_at` 기준)로 먼저 대상 행을 좁힌 뒤에만** jsonb를 펼친다 — 날짜 필터 없이 전체 아카이브를 펼치는 경로는 아예 만들지 않는다(사용자가 요청한 "DB 전체 조회가 부담되면 날짜로 제한" 그대로 반영). 어차피 두 아카이브 테이블 모두 30일 보존 정책(§Phase 4, §Phase 6)으로 자동 정리되므로 최대 스캔 범위 자체가 30일로 이미 상한이 있지만, 그 안에서도 기본 조회는 최근 7일로 더 좁혀 시작한다.
+
+```sql
+create or replace function public.admin_search_messages(
+  p_query text,
+  p_date_from timestamptz,
+  p_date_to timestamptz,
+  p_scope text default 'all' -- 'active_rooms' | 'active_random' | 'archived_rooms' | 'archived_random' | 'all'
+)
+returns table (
+  source text,           -- 'room' | 'random_session' | 'room_archive' | 'random_archive'
+  context_id uuid,        -- 방/세션/아카이브 id (상세 화면 링크용)
+  sender_id uuid,
+  content text,
+  created_at timestamptz
+)
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if not public.is_admin() then
+    raise exception 'not_authorized';
+  end if;
+  if p_date_from is null or p_date_to is null then
+    raise exception 'date_range_required'; -- 날짜 범위는 선택이 아니라 필수 — 무제한 스캔 경로 원천 차단
+  end if;
+
+  return query
+  -- 진행 중인 방 메시지 (trgm 인덱스 활용)
+  select 'room', m.room_id, m.sender_id, m.content, m.created_at
+  from public.messages m
+  where p_scope in ('all', 'active_rooms')
+    and m.room_id is not null
+    and m.content_type = 'text'
+    and m.content ilike '%' || p_query || '%'
+    and m.created_at between p_date_from and p_date_to
+
+  union all
+
+  -- 진행 중인 랜덤 세션 메시지
+  select 'random_session', m.session_id, m.sender_id, m.content, m.created_at
+  from public.messages m
+  where p_scope in ('all', 'active_random')
+    and m.session_id is not null
+    and m.content_type = 'text'
+    and m.content ilike '%' || p_query || '%'
+    and m.created_at between p_date_from and p_date_to
+
+  union all
+
+  -- 종료된 방 아카이브 — 날짜로 먼저 행을 좁힌 뒤에만 jsonb 펼침
+  select 'room_archive', ra.id, (elem->>'sender_id')::uuid,
+         elem->>'content', (elem->>'created_at')::timestamptz
+  from public.room_archives ra,
+       jsonb_array_elements(ra.messages) elem
+  where p_scope in ('all', 'archived_rooms')
+    and ra.archived_at between p_date_from and p_date_to
+    and elem->>'content_type' = 'text'
+    and elem->>'content' ilike '%' || p_query || '%'
+
+  union all
+
+  -- 종료된 랜덤 세션 아카이브
+  select 'random_archive', rsa.id, (elem->>'sender_id')::uuid,
+         elem->>'content', (elem->>'created_at')::timestamptz
+  from public.random_session_archives rsa,
+       jsonb_array_elements(rsa.messages) elem
+  where p_scope in ('all', 'archived_random')
+    and rsa.archived_at between p_date_from and p_date_to
+    and elem->>'content_type' = 'text'
+    and elem->>'content' ilike '%' || p_query || '%'
+
+  order by created_at desc
+  limit 200;
+end;
+$$;
+```
+
+- 날짜 범위는 함수 시그니처 레벨에서 `not null` 요구가 아니라 함수 본문에서 명시적으로 거부한다 — RPC 호출부(UI)가 실수로 null을 넘기더라도 서버가 항상 막도록.
+- `p_query`가 2자 미만이면 (검색 화면단에서, §4.4의 사용자 검색과 동일한 기존 전제) 호출 자체를 하지 않도록 클라이언트에서 막는다 — trgm 인덱스도 너무 짧은 패턴은 선택도가 낮아 비효율적이다.
+- 결과 200건 상한은 "검색"이지 "전체 export"가 아니라는 전제 — 더 필요하면 날짜 범위를 좁혀 재검색하도록 UI에서 안내(페이지네이션 대신 범위 좁히기를 유도, 아카이브 jsonb 특성상 offset 기반 페이지네이션이 비효율적이므로).
+
+| 파일 | 상태 | 설명 |
+|---|---|---|
+| `lib/queries/admin.ts` | 변경(§7.5.4 목록에 추가) | `searchAdminMessages(query, dateFrom, dateTo, scope)` — `admin_search_messages` RPC 호출, 기본 `dateFrom`/`dateTo`는 호출부(화면)에서 "최근 7일"로 계산해 전달(쿼리 함수 자체는 얇게 유지하는 기존 패턴) |
+| `app/admin/messages/page.tsx` | 신규 | 통합 메시지 검색 화면 — 키워드 입력 + 날짜 범위 피커(기본 최근 7일, 최대 30일 — 아카이브 보존 기한과 동일하게 UI에서도 제한해 헛수고 방지) + 범위 토글(방채팅/랜덤채팅/전체 × 진행중/아카이브/전체). 결과 행 클릭 시 `source`에 따라 `/admin/rooms/[roomId]`, `/admin/random/[sessionId]`, `/admin/rooms/archived/[archiveId]`, `/admin/random/archived/[archiveId]`로 이동(§7.5.4의 상세 화면과 연결) |
+| `components/admin/message-search-panel.tsx` | 신규 | 검색어/날짜/범위 폼 + 결과 리스트(발신자, 내용 스니펫, 시각, 출처 배지) — `components/admin/data-table.tsx` 재사용 |
+| `components/admin/admin-sidebar.tsx` | 변경(§7.5.4 목록 수정) | 네비에 "메시지 검색" 항목 추가 |
+
+### 7.5.7 완료 조건 및 검증
+
+- `npm run check-all` + `npm run build` 통과
+- `mcp__supabase__get_advisors`(security)로 신규 테이블(`reports`, `admin_audit_logs`) 및 `profiles` 컬럼 추가 후 RLS 점검 — 이 프로젝트에서 반복된 함정(publication 미등록, REPLICA IDENTITY, 자기 참조 재귀)이 이번엔 해당 없음을 확인(신규 테이블은 Realtime 구독 대상이 아니므로 publication 등록 불필요)
+- 비관리자 계정으로 `/admin` 접근 시 404 확인, 관리자 계정으로는 정상 진입 확인
+- 관리자 조치 함수(`admin_*`)를 비관리자 `auth.uid()`로 SQL 직접 호출해 전부 `not_authorized` 예외로 거부되는지 확인(레이아웃의 404를 우회해도 서버 측 재검증이 막는지가 핵심 — §Phase 7에서 확립한 검증 방식과 동일하게 `set local role authenticated` + `request.jwt.claims`로 역할 전환해 재현)
+- 삭제된 방/종료된 세션의 이미지가 `/api/admin/chat-image-url`로는 정상 조회되고, 참여자가 아닌 관리자가 아닌 계정으로 같은 경로를 호출하면 거부되는지 확인
+- **핵심 시나리오**: 실제 방채팅/랜덤채팅을 하나씩 진행 중인 상태로 만들어두고, 관리자 화면에서 `/admin/rooms`·`/admin/random`의 "진행 중" 탭에 즉시 노출되는지, 상세 진입 시 실시간으로 새 메시지가 타임라인에 반영되는지 확인 → 이후 방을 나가기/세션을 종료해 "종료됨" 탭으로 넘어가는지, 종료 후에도 같은 `MessageTimeline` 컴포넌트로 동일한 대화 내용(이미지 포함)이 그대로 보이는지 확인(진행 중 → 종료 전환 시 관리자가 다른 화면을 헤매지 않고 탭만 바꾸면 되는지가 이번 Phase의 핵심 요구사항)
+- 신고 접수(일반 사용자 화면) → 신고 큐에 노출 → 상세에서 강제 삭제/정지 실행 → 신고 처리 완료로 상태 전환까지 Playwright로 전체 흐름 1회 재현
+- 정지된 계정으로 방 입장/매칭/메시지 전송 시도 시 거부되는지, 로그인 자체는 여전히 되는지 확인
+- 대시보드 지표(가입자 수, DAU, 활성 방/세션 수)가 SQL로 직접 집계한 값과 일치하는지 대조
+- 메시지 검색(§7.5.6) — 날짜 범위 없이 `admin_search_messages`를 호출(SQL 직접 호출)하면 `date_range_required`로 거부되는지 확인, 진행 중 메시지·아카이브 메시지 각각에 대해 키워드 검색 결과가 실제로 매칭되는지, 결과 클릭 시 해당 방/세션 상세로 정상 이동하는지 확인
+
+**연관 PRD**: §7.4 후속 검토(운영자 관리 화면), §7.1 권한 검증 — `ROADMAP.md` Phase 7.5와 동일
+
+### 구현 완료 (2026-08-10)
+
+계획대로 마이그레이션 9건 + 구현 중 추가된 1건(총 10건), `app/admin/*` 전 화면, `app/actions/admin.ts`,
+`app/actions/reports.ts`, `lib/queries/admin.ts`, `components/admin/*`, 일반 사용자 신고 진입점을
+구현했다. `npm run check-all`/`npm run build` 통과, `get_advisors`(security) 점검 완료(신규 이슈 없음).
+상세 검증 내역과 계획 대비 달라진 점은 `ROADMAP.md` Phase 7.5 "구현 완료 (2026-08-10)" 절 참고 —
+요약하면 (1) `add_suspension_columns_to_profiles` 마이그레이션을 계획보다 앞당겨 적용(뒤 함수들이
+그 컬럼을 참조하므로), (2) 참여자가 아닌 방의 참여자 목록을 관리자가 볼 수 없던 문제를 해결하기 위해
+계획에 없던 `admin_get_room_members()` 함수 추가, (3) `ChatHeader` 드롭다운 안에 `Dialog`를 직접
+중첩할 수 없는 Radix 제약 때문에 `report-button.tsx`를 자체 트리거 없는 controlled dialog로 구현,
+(4) 회원 상세 화면의 "최근 대화 이력"은 방별 링크 대신 참여 중인 방 개수로 단순화(대화 열람은 이미
+통합 조회 화면에서 가능하므로 중복 UI를 만들지 않음), (5) 관리자 계정은 계획대로 SQL로 직접 지정
+(`rudvy9@gmail.com`).
+
+**실제 브라우저 검증 및 버그 수정 (2026-08-09)**: `check-all`/`build` 통과만으로는 안 잡히는 런타임
+버그 2건을 Playwright 실사용 테스트로 발견·수정했다 — (1) `DataTable`이 `"use client"`인 채로 각
+페이지(Server Component)의 `columns[].render` 함수를 prop으로 받아 `/admin/rooms`·`random`·
+`users`·`reports` 4개 화면이 전부 500 에러였던 문제(`DataTable`에서 `"use client"` 제거 + 검색
+인풋만 `data-table-search-input.tsx`로 분리), (2) `MessageTimeline`의 시각 표시가 서버/클라이언트
+로케일 불일치로 hydration mismatch를 내던 문제(`suppressHydrationWarning` 추가 — 같은 현상이
+일반 채팅 화면에도 있는 pre-existing 이슈임을 발견했으나 이번 Phase 범위 밖이라 미수정). 상세 검증
+시나리오는 `ROADMAP.md` Phase 7.5 "실제 브라우저 검증 및 버그 수정" 절 참고.
 
 ## Phase 8 — UI/UX 마감 및 반응형 — 개요만
 

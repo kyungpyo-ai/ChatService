@@ -8,6 +8,108 @@ export type Database = {
   };
   public: {
     Tables: {
+      account_deletions: {
+        Row: {
+          deleted_at: string;
+          id: string;
+          user_id: string;
+        };
+        Insert: {
+          deleted_at?: string;
+          id?: string;
+          user_id: string;
+        };
+        Update: {
+          deleted_at?: string;
+          id?: string;
+          user_id?: string;
+        };
+        Relationships: [];
+      };
+      admin_audit_logs: {
+        Row: {
+          action: string;
+          admin_id: string;
+          created_at: string;
+          detail: Json | null;
+          id: string;
+          target_id: string | null;
+          target_type: string;
+        };
+        Insert: {
+          action: string;
+          admin_id: string;
+          created_at?: string;
+          detail?: Json | null;
+          id?: string;
+          target_id?: string | null;
+          target_type: string;
+        };
+        Update: {
+          action?: string;
+          admin_id?: string;
+          created_at?: string;
+          detail?: Json | null;
+          id?: string;
+          target_id?: string | null;
+          target_type?: string;
+        };
+        Relationships: [];
+      };
+      admin_daily_stats: {
+        Row: {
+          active_rooms: number;
+          deleted_users: number;
+          new_users: number;
+          random_sessions_matched: number;
+          recorded_at: string;
+          rooms_created: number;
+          rooms_deleted: number;
+          stat_date: string;
+          total_users: number;
+        };
+        Insert: {
+          active_rooms: number;
+          deleted_users: number;
+          new_users: number;
+          random_sessions_matched: number;
+          recorded_at?: string;
+          rooms_created: number;
+          rooms_deleted: number;
+          stat_date: string;
+          total_users: number;
+        };
+        Update: {
+          active_rooms?: number;
+          deleted_users?: number;
+          new_users?: number;
+          random_sessions_matched?: number;
+          recorded_at?: string;
+          rooms_created?: number;
+          rooms_deleted?: number;
+          stat_date?: string;
+          total_users?: number;
+        };
+        Relationships: [];
+      };
+      daily_active_users: {
+        Row: {
+          activity_date: string;
+          is_guest: boolean;
+          user_id: string;
+        };
+        Insert: {
+          activity_date: string;
+          is_guest: boolean;
+          user_id: string;
+        };
+        Update: {
+          activity_date?: string;
+          is_guest?: boolean;
+          user_id?: string;
+        };
+        Relationships: [];
+      };
       guest_profiles: {
         Row: {
           id: string;
@@ -79,6 +181,11 @@ export type Database = {
           id: string;
           last_seen_at: string;
           role: string;
+          room_heartbeat_at: string | null;
+          room_heartbeat_room_id: string | null;
+          suspended_at: string | null;
+          suspended_reason: string | null;
+          suspended_until: string | null;
           updated_at: string | null;
           username: string | null;
           website: string | null;
@@ -93,6 +200,11 @@ export type Database = {
           id: string;
           last_seen_at?: string;
           role?: string;
+          room_heartbeat_at?: string | null;
+          room_heartbeat_room_id?: string | null;
+          suspended_at?: string | null;
+          suspended_reason?: string | null;
+          suspended_until?: string | null;
           updated_at?: string | null;
           username?: string | null;
           website?: string | null;
@@ -107,11 +219,24 @@ export type Database = {
           id?: string;
           last_seen_at?: string;
           role?: string;
+          room_heartbeat_at?: string | null;
+          room_heartbeat_room_id?: string | null;
+          suspended_at?: string | null;
+          suspended_reason?: string | null;
+          suspended_until?: string | null;
           updated_at?: string | null;
           username?: string | null;
           website?: string | null;
         };
-        Relationships: [];
+        Relationships: [
+          {
+            foreignKeyName: "profiles_room_heartbeat_room_id_fkey";
+            columns: ["room_heartbeat_room_id"];
+            isOneToOne: false;
+            referencedRelation: "rooms";
+            referencedColumns: ["id"];
+          },
+        ];
       };
       random_queue: {
         Row: {
@@ -218,6 +343,48 @@ export type Database = {
           action?: string;
           created_at?: string;
           user_id?: string;
+        };
+        Relationships: [];
+      };
+      reports: {
+        Row: {
+          action_taken: string | null;
+          created_at: string;
+          detail: string | null;
+          id: string;
+          reason: string;
+          reporter_id: string | null;
+          reviewed_at: string | null;
+          reviewed_by: string | null;
+          status: string;
+          target_id: string;
+          target_type: string;
+        };
+        Insert: {
+          action_taken?: string | null;
+          created_at?: string;
+          detail?: string | null;
+          id?: string;
+          reason: string;
+          reporter_id?: string | null;
+          reviewed_at?: string | null;
+          reviewed_by?: string | null;
+          status?: string;
+          target_id: string;
+          target_type: string;
+        };
+        Update: {
+          action_taken?: string | null;
+          created_at?: string;
+          detail?: string | null;
+          id?: string;
+          reason?: string;
+          reporter_id?: string | null;
+          reviewed_at?: string | null;
+          reviewed_by?: string | null;
+          status?: string;
+          target_id?: string;
+          target_type?: string;
         };
         Relationships: [];
       };
@@ -388,6 +555,266 @@ export type Database = {
       [_ in never]: never;
     };
     Functions: {
+      admin_compute_live_stats: {
+        Args: never;
+        Returns: {
+          active_rooms: number;
+          dau: number;
+          deleted_users: number;
+          guest_count: number;
+          new_users: number;
+          online_count: number;
+          pending_reports: number;
+          random_active_participants: number;
+          random_queue_waiting_count: number;
+          random_sessions_matched: number;
+          room_active_users: number;
+          rooms_created: number;
+          rooms_deleted: number;
+          total_users: number;
+        }[];
+      };
+      admin_dismiss_report: {
+        Args: { p_report_id: string };
+        Returns: undefined;
+      };
+      admin_force_delete_room: {
+        Args: { p_reason?: string; p_room_id: string };
+        Returns: undefined;
+      };
+      admin_force_end_random_session: {
+        Args: { p_reason?: string; p_session_id: string };
+        Returns: undefined;
+      };
+      admin_get_cron_job_status: {
+        Args: never;
+        Returns: {
+          active: boolean;
+          jobid: number;
+          jobname: string;
+          last_end_time: string;
+          last_return_message: string;
+          last_start_time: string;
+          last_status: string;
+          schedule: string;
+        }[];
+      };
+      admin_get_daily_stats: {
+        Args: { p_date_from: string; p_date_to: string };
+        Returns: {
+          active_rooms: number;
+          deleted_users: number;
+          new_users: number;
+          random_sessions_matched: number;
+          rooms_created: number;
+          rooms_deleted: number;
+          stat_date: string;
+          total_users: number;
+        }[];
+      };
+      admin_get_dashboard_stats: {
+        Args: never;
+        Returns: {
+          active_rooms: number;
+          dau: number;
+          deleted_users_today: number;
+          guest_count: number;
+          new_users_today: number;
+          online_count: number;
+          pending_reports: number;
+          random_active_participants: number;
+          random_queue_waiting_count: number;
+          random_sessions_matched_today: number;
+          room_active_users: number;
+          rooms_created_today: number;
+          rooms_deleted_today: number;
+          total_users: number;
+        }[];
+      };
+      admin_get_random_archive_detail: {
+        Args: { p_archive_id: string };
+        Returns: {
+          archived_at: string;
+          ended_at: string;
+          ended_by: string;
+          id: string;
+          messages: Json;
+          original_session_id: string;
+          started_at: string;
+          user_a_id: string;
+          user_b_id: string;
+        }[];
+      };
+      admin_get_random_archive_list: {
+        Args: { p_date_from?: string; p_date_to?: string; p_query?: string };
+        Returns: {
+          archived_at: string;
+          ended_at: string;
+          id: string;
+          original_session_id: string;
+          started_at: string;
+          user_a_id: string;
+          user_b_id: string;
+        }[];
+      };
+      admin_get_random_session_messages: {
+        Args: { p_session_id: string };
+        Returns: {
+          content: string;
+          content_type: string;
+          created_at: string;
+          id: string;
+          sender_id: string;
+        }[];
+      };
+      admin_get_rate_limit_anomalies: {
+        Args: { p_limit?: number; p_window_hours?: number };
+        Returns: {
+          action: string;
+          event_count: number;
+          user_id: string;
+          username: string;
+        }[];
+      };
+      admin_get_room_archive_detail: {
+        Args: { p_archive_id: string };
+        Returns: {
+          archived_at: string;
+          created_at: string;
+          id: string;
+          is_private: boolean;
+          max_members: number;
+          member_ids: string[];
+          messages: Json;
+          original_room_id: string;
+          owner_id: string;
+          title: string;
+        }[];
+      };
+      admin_get_room_archive_list: {
+        Args: { p_query?: string };
+        Returns: {
+          archived_at: string;
+          id: string;
+          is_private: boolean;
+          member_count: number;
+          original_room_id: string;
+          owner_id: string;
+          title: string;
+        }[];
+      };
+      admin_get_room_members: {
+        Args: { p_room_id: string };
+        Returns: {
+          avatar_url: string;
+          joined_at: string;
+          nickname: string;
+          role: string;
+          user_id: string;
+        }[];
+      };
+      admin_get_room_messages: {
+        Args: { p_room_id: string };
+        Returns: {
+          content: string;
+          content_type: string;
+          created_at: string;
+          id: string;
+          sender_id: string;
+        }[];
+      };
+      admin_get_user_detail: {
+        Args: { p_user_id: string };
+        Returns: {
+          age: number;
+          created_at: string;
+          email: string;
+          full_name: string;
+          gender: string;
+          id: string;
+          last_seen_at: string;
+          report_count: number;
+          role: string;
+          room_count: number;
+          suspended_at: string;
+          suspended_reason: string;
+          suspended_until: string;
+          username: string;
+        }[];
+      };
+      admin_log_action: {
+        Args: {
+          p_action: string;
+          p_detail?: Json;
+          p_target_id: string;
+          p_target_type: string;
+        };
+        Returns: undefined;
+      };
+      admin_resolve_report: {
+        Args: { p_action_taken: string; p_report_id: string };
+        Returns: undefined;
+      };
+      admin_search_messages: {
+        Args: {
+          p_date_from: string;
+          p_date_to: string;
+          p_query: string;
+          p_scope?: string;
+        };
+        Returns: {
+          content: string;
+          context_id: string;
+          created_at: string;
+          sender_id: string;
+          source: string;
+        }[];
+      };
+      admin_search_random_sessions: {
+        Args: { p_query?: string };
+        Returns: {
+          id: string;
+          started_at: string;
+          status: string;
+          user_a_id: string;
+          user_b_id: string;
+        }[];
+      };
+      admin_search_rooms: {
+        Args: { p_query?: string };
+        Returns: {
+          created_at: string;
+          id: string;
+          is_private: boolean;
+          max_members: number;
+          member_count: number;
+          owner_id: string;
+          owner_nickname: string;
+          title: string;
+        }[];
+      };
+      admin_search_users: {
+        Args: { p_query?: string };
+        Returns: {
+          age: number;
+          created_at: string;
+          email: string;
+          full_name: string;
+          gender: string;
+          id: string;
+          last_seen_at: string;
+          role: string;
+          suspended_at: string;
+          suspended_reason: string;
+          suspended_until: string;
+          username: string;
+        }[];
+      };
+      admin_suspend_user: {
+        Args: { p_reason: string; p_until?: string; p_user_id: string };
+        Returns: undefined;
+      };
+      admin_unsuspend_user: { Args: { p_user_id: string }; Returns: undefined };
       archive_ended_random_sessions: { Args: never; Returns: undefined };
       cancel_random_queue: { Args: never; Returns: undefined };
       check_and_record_rate_limit: {
@@ -398,6 +825,7 @@ export type Database = {
         };
         Returns: boolean;
       };
+      cleanup_old_daily_active_users: { Args: never; Returns: undefined };
       cleanup_old_random_session_archives: { Args: never; Returns: undefined };
       cleanup_old_rate_limit_events: { Args: never; Returns: undefined };
       cleanup_old_room_archives: { Args: never; Returns: undefined };
@@ -413,7 +841,13 @@ export type Database = {
           status: string;
         }[];
       };
+      heartbeat_room_presence: {
+        Args: { p_room_id: string };
+        Returns: undefined;
+      };
+      is_admin: { Args: never; Returns: boolean };
       is_room_member: { Args: { p_room_id: string }; Returns: boolean };
+      is_user_suspended: { Args: { p_user_id?: string }; Returns: boolean };
       join_room: {
         Args: { p_password?: string; p_room_id: string };
         Returns: undefined;
@@ -425,6 +859,8 @@ export type Database = {
       leave_room: { Args: { p_room_id: string }; Returns: undefined };
       list_orphaned_chat_images: { Args: never; Returns: string[] };
       match_or_wait: { Args: never; Returns: string };
+      record_daily_activity: { Args: never; Returns: undefined };
+      record_daily_stats_snapshot: { Args: never; Returns: undefined };
       room_member_count: {
         Args: { r: Database["public"]["Tables"]["rooms"]["Row"] };
         Returns: number;

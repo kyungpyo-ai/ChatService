@@ -1,8 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { ChevronLeft, LogOut, MoreVertical, ShieldCheck, Users } from "lucide-react";
+import { ChevronLeft, Flag, LogOut, MoreVertical, ShieldCheck, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 interface ChatHeaderProps {
   title: string;
@@ -13,6 +19,8 @@ interface ChatHeaderProps {
   safetyLabel?: string;
   onLeave?: () => void;
   leaveLabel?: string;
+  /** "더보기" 드롭다운의 "신고하기" 항목 클릭 핸들러 — 없으면 더보기 메뉴 자체가 숨겨진다 */
+  onReport?: () => void;
 }
 
 /**
@@ -27,6 +35,7 @@ export function ChatHeader({
   safetyLabel = "안심",
   onLeave,
   leaveLabel = "나가기",
+  onReport,
 }: ChatHeaderProps) {
   return (
     <header className="bg-surface/95 sticky top-0 z-30 flex h-14 items-center gap-2 border-b px-3 backdrop-blur">
@@ -62,7 +71,26 @@ export function ChatHeader({
         </Button>
       )}
 
-      {onLeave ? (
+      {onReport && (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon" aria-label="더보기">
+              <MoreVertical size={18} />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem
+              onClick={onReport}
+              className="text-destructive focus:text-destructive"
+            >
+              <Flag className="mr-2 h-4 w-4" />
+              신고하기
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
+
+      {onLeave && (
         <Button
           variant="ghost"
           size="sm"
@@ -72,7 +100,9 @@ export function ChatHeader({
           <LogOut size={14} />
           {leaveLabel}
         </Button>
-      ) : (
+      )}
+
+      {!onReport && !onLeave && (
         <Button variant="ghost" size="icon" aria-label="더보기">
           <MoreVertical size={18} />
         </Button>

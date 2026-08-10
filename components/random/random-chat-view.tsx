@@ -6,6 +6,7 @@ import { ChatHeader } from "@/components/chat/chat-header";
 import { ChatMessageBubble, type ChatMessage } from "@/components/chat/chat-message-bubble";
 import { ChatInputBar } from "@/components/chat/chat-input-bar";
 import { Button } from "@/components/ui/button";
+import { RandomReportButton } from "@/components/random/report-button";
 import { useRandomSessionMessages } from "@/lib/realtime/random";
 import { endRandomSessionAction } from "@/app/actions/random";
 import { showError, showInfo } from "@/lib/utils/toast";
@@ -31,6 +32,7 @@ export function RandomChatView({
 }: RandomChatViewProps) {
   const router = useRouter();
   const [endedByMe, setEndedByMe] = useState(initialEndedByMe);
+  const [reportOpen, setReportOpen] = useState(false);
   const { messages, partnerEnded, sendMessage, sendImageMessage } = useRandomSessionMessages(
     sessionId,
     initialMessages,
@@ -88,6 +90,7 @@ export function RandomChatView({
         backHref="/"
         onLeave={sessionEnded ? undefined : () => void handleEnd()}
         leaveLabel="종료"
+        onReport={() => setReportOpen(true)}
       />
 
       {sessionEnded && (
@@ -131,6 +134,7 @@ export function RandomChatView({
       ) : (
         <ChatInputBar onSend={handleSend} onSendImage={handleSendImage} />
       )}
+      <RandomReportButton sessionId={sessionId} open={reportOpen} onOpenChange={setReportOpen} />
     </div>
   );
 }

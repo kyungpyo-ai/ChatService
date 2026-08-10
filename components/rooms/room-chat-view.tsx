@@ -8,8 +8,10 @@ import { ChatMessageBubble, type ChatMessage } from "@/components/chat/chat-mess
 import { ChatInputBar } from "@/components/chat/chat-input-bar";
 import { ParticipantList, ParticipantSidePanel } from "@/components/rooms/participant-list";
 import { LeaveRoomDialog } from "@/components/rooms/leave-room-dialog";
+import { RoomReportButton } from "@/components/rooms/report-button";
 import { useRoomMessages } from "@/lib/realtime/messages";
 import { useRoomPresence } from "@/lib/realtime/presence";
+import { useRoomHeartbeat } from "@/lib/hooks/use-room-heartbeat";
 import { kickMemberAction, leaveRoomAction } from "@/app/actions/rooms";
 import { showError, showInfo } from "@/lib/utils/toast";
 import type { RoomMember } from "@/lib/queries/rooms";
@@ -37,9 +39,11 @@ export function RoomChatView({
   const router = useRouter();
   const [participantsOpen, setParticipantsOpen] = useState(false);
   const [leaveDialogOpen, setLeaveDialogOpen] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
   const { messages, participants, roomDeleted, kicked, sendMessage, sendImageMessage } =
     useRoomMessages(roomId, initialMessages, initialParticipants, currentUserId);
   const onlineUserIds = useRoomPresence(roomId, currentUserId);
+  useRoomHeartbeat(roomId);
   const isOwner = participants.some((p) => p.id === currentUserId && p.isOwner);
   const memberCount = participants.length;
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -107,6 +111,7 @@ export function RoomChatView({
           maxMembers={maxMembers}
           onOpenParticipants={() => setParticipantsOpen(true)}
           onLeave={() => setLeaveDialogOpen(true)}
+          onReport={() => setReportOpen(true)}
         />
         <PinnedNoticeBar notice={notice} />
 
@@ -160,6 +165,7 @@ export function RoomChatView({
         onConfirm={handleLeave}
         isOwner={isOwner}
       />
+      <RoomReportButton roomId={roomId} open={reportOpen} onOpenChange={setReportOpen} />
     </div>
   );
 }
