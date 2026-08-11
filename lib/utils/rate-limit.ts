@@ -9,7 +9,6 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 export const RATE_LIMITS = {
   send_message: { maxCount: 10, windowSeconds: 10 },
-  create_room: { maxCount: 5, windowSeconds: 60 * 60 * 24 },
   upload_image: { maxCount: 10, windowSeconds: 60 },
 } as const;
 

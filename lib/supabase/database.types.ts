@@ -815,6 +815,10 @@ export type Database = {
         Returns: undefined;
       };
       admin_unsuspend_user: { Args: { p_user_id: string }; Returns: undefined };
+      archive_and_delete_room: {
+        Args: { p_room_id: string };
+        Returns: undefined;
+      };
       archive_ended_random_sessions: { Args: never; Returns: undefined };
       cancel_random_queue: { Args: never; Returns: undefined };
       check_and_record_rate_limit: {

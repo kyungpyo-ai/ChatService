@@ -11,7 +11,6 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createRoomSchema } from "@/lib/schemas/room";
-import { checkRateLimit } from "@/lib/utils/rate-limit";
 import type { ActionResult } from "@/lib/types/forms";
 
 /**
@@ -49,14 +48,6 @@ export async function createRoomAction(
       return { success: false, message: "게스트는 방을 만들 수 없습니다. 로그인해주세요." };
     }
 
-    const withinRateLimit = await checkRateLimit(supabase, "create_room");
-    if (!withinRateLimit) {
-      return {
-        success: false,
-        message: "방 생성 횟수 제한을 초과했습니다. 잠시 후 다시 시도해주세요.",
-      };
-    }
-
     const isPrivate = formData.get("isPrivate") === "true";
 
     const validatedFields = createRoomSchema.safeParse({
@@ -74,7 +65,13 @@ export async function createRoomAction(
       };
     }
 
-    const passwordHash = isPrivate ? await bcrypt.hash(validatedFields.data.password!, 10) : null;
+    // bcryptjs가 생성하는 "$2b$" 버전 태그를 Supabase pgcrypto의 crypt()가 인식하지 못해
+    // (self-consistency는 되지만 다른 구현체가 만든 $2b$ 해시는 항상 불일치로 판정) 비밀번호가
+    // 맞아도 join_room()에서 항상 invalid_password가 나는 문제가 있었다. "$2a$"로 태그만
+    // 바꿔도 해시 내용(알고리즘 결과)은 동일해 검증이 정상 동작한다(실사용 재현으로 확인).
+    const passwordHash = isPrivate
+      ? (await bcrypt.hash(validatedFields.data.password!, 10)).replace(/^\$2[a-z]\$/, "$2a$")
+      : null;
 
     const { data: room, error: insertError } = await supabase
       .from("rooms")
@@ -89,6 +86,14 @@ export async function createRoomAction(
       .single();
 
     if (insertError || !room) {
+      // enforce_max_rooms_per_owner 트리거가 막은 경우(1인 최대 3방) 다른 삽입 실패와
+      // 구분해 사용자가 원인을 알 수 있는 메시지를 보여준다.
+      if (insertError?.message.includes("max_rooms_exceeded")) {
+        return {
+          success: false,
+          message: "방은 최대 3개까지 만들 수 있습니다. 기존 방을 나간 뒤 다시 시도해주세요.",
+        };
+      }
       return { success: false, message: "방 생성에 실패했습니다." };
     }
 

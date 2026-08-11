@@ -12,6 +12,7 @@ import type { ChatMessage } from "@/components/chat/chat-message-bubble";
 export interface RoomListItem {
   id: string;
   title: string;
+  ownerId: string;
   ownerNickname: string;
   ownerGender: "male" | "female";
   ownerAge: number;
@@ -43,6 +44,7 @@ export interface RoomMember {
 interface RoomListRow {
   id: string;
   title: string;
+  owner_id: string;
   max_members: number;
   is_private: boolean;
   created_at: string;
@@ -60,7 +62,7 @@ export async function getRoomList(): Promise<RoomListItem[]> {
   const { data, error } = await supabase
     .from("rooms")
     .select(
-      "id, title, max_members, is_private, created_at, owner:profiles!rooms_owner_id_fkey(username, gender, age), room_member_count"
+      "id, title, owner_id, max_members, is_private, created_at, owner:profiles!rooms_owner_id_fkey(username, gender, age), room_member_count"
     )
     .order("created_at", { ascending: false });
 
@@ -73,6 +75,7 @@ export async function getRoomList(): Promise<RoomListItem[]> {
     .map((room) => ({
       id: room.id,
       title: room.title,
+      ownerId: room.owner_id,
       ownerNickname: room.owner!.username ?? "익명",
       ownerGender: (room.owner!.gender ?? "male") as "male" | "female",
       ownerAge: room.owner!.age ?? 0,
@@ -93,7 +96,7 @@ export async function getMyRoomList(userId: string): Promise<RoomListItem[]> {
   const { data, error } = await supabase
     .from("rooms")
     .select(
-      "id, title, max_members, is_private, created_at, owner:profiles!rooms_owner_id_fkey(username, gender, age), room_member_count, room_members!inner(user_id)"
+      "id, title, owner_id, max_members, is_private, created_at, owner:profiles!rooms_owner_id_fkey(username, gender, age), room_member_count, room_members!inner(user_id)"
     )
     .eq("room_members.user_id", userId)
     .order("created_at", { ascending: false });
@@ -107,6 +110,7 @@ export async function getMyRoomList(userId: string): Promise<RoomListItem[]> {
     .map((room) => ({
       id: room.id,
       title: room.title,
+      ownerId: room.owner_id,
       ownerNickname: room.owner!.username ?? "익명",
       ownerGender: (room.owner!.gender ?? "male") as "male" | "female",
       ownerAge: room.owner!.age ?? 0,

@@ -16,9 +16,11 @@ export const createRoomSchema = z
       .string()
       .min(1, "방 제목을 입력해주세요")
       .max(50, "방 제목은 최대 50자까지 가능합니다"),
-    maxMembers: z.enum(["5", "10", "20", "50"], {
-      message: "최대 인원을 선택해주세요",
-    }),
+    maxMembers: z
+      .string()
+      .min(1, "최대 인원을 입력해주세요")
+      .refine((v) => /^\d+$/.test(v), "숫자만 입력해주세요")
+      .refine((v) => Number(v) >= 2 && Number(v) <= 50, "2~50명 사이로 입력해주세요"),
     isPrivate: z.boolean(),
     password: z.string().optional(),
   })

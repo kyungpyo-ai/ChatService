@@ -58,7 +58,7 @@ export default async function RoomListPage({
               : "아직 개설된 방이 없어요. 첫 방을 만들어보세요!"}
           </p>
         ) : (
-          rooms.map((room) => <RoomCard key={room.id} room={room} />)
+          rooms.map((room) => <RoomCard key={room.id} room={room} currentUserId={user?.id} />)
         )}
       </div>
 

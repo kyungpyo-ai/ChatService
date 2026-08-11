@@ -14,13 +14,6 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { createRoomSchema, type CreateRoomInput } from "@/lib/schemas/room";
 import { showError } from "@/lib/utils/toast";
 import { createRoomAction } from "@/app/actions/rooms";
@@ -86,20 +79,17 @@ export function CreateRoomForm() {
           name="maxMembers"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>최대 인원</FormLabel>
-              <Select onValueChange={field.onChange} value={field.value} disabled={isSubmitting}>
-                <FormControl>
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="인원 선택" />
-                  </SelectTrigger>
-                </FormControl>
-                <SelectContent>
-                  <SelectItem value="5">5명</SelectItem>
-                  <SelectItem value="10">10명</SelectItem>
-                  <SelectItem value="20">20명</SelectItem>
-                  <SelectItem value="50">50명</SelectItem>
-                </SelectContent>
-              </Select>
+              <FormLabel>최대 인원 (2~50명)</FormLabel>
+              <FormControl>
+                <Input
+                  type="number"
+                  min={2}
+                  max={50}
+                  placeholder="예: 20"
+                  {...field}
+                  disabled={isSubmitting}
+                />
+              </FormControl>
               <FormMessage />
             </FormItem>
           )}

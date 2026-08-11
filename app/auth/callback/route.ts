@@ -7,7 +7,11 @@ import { type NextRequest } from "next/server";
  * Google OAuth 인증 후 리다이렉트되어 인증 코드를 세션으로 교환합니다.
  */
 export async function GET(request: NextRequest) {
-  const { searchParams, origin } = new URL(request.url);
+  const { searchParams, origin: rawOrigin } = new URL(request.url);
+  // Next.js 개발 서버가 0.0.0.0으로 바인드된 환경에서는 브라우저가 실제로 localhost:3000으로
+  // 요청해도 request.url의 origin이 0.0.0.0:3000으로 계산되는 경우가 있다(§실사용 재현 확인).
+  // 0.0.0.0은 브라우저가 열 수 있는 유효한 origin이 아니므로 localhost로 정규화한다.
+  const origin = rawOrigin.replace("//0.0.0.0", "//localhost");
   const code = searchParams.get("code");
   const next = searchParams.get("next") ?? "/";
 

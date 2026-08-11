@@ -4,6 +4,7 @@ import type { RoomListItem } from "@/lib/queries/rooms";
 
 interface RoomCardProps {
   room: RoomListItem;
+  currentUserId?: string;
 }
 
 function formatCreatedAgo(createdAt: string): string {
@@ -18,14 +19,27 @@ function formatCreatedAgo(createdAt: string): string {
  *
  * 사용자가 제공한 UIUX 샘플(docs/UIUX/방목록 화면 sample 디자인.png)의 카드 레이아웃을 따른다.
  */
-export function RoomCard({ room }: RoomCardProps) {
+export function RoomCard({ room, currentUserId }: RoomCardProps) {
+  const isMine = room.ownerId === currentUserId;
+
   return (
     <Link
       href={`/rooms/${room.id}`}
-      className="bg-surface hover:bg-surface-muted relative block rounded-(--radius-card) border p-4 shadow-(--shadow-card)"
+      className={
+        isMine
+          ? "bg-surface hover:bg-surface-muted border-brand relative block rounded-(--radius-card) border-2 p-4 shadow-(--shadow-card)"
+          : "bg-surface hover:bg-surface-muted relative block rounded-(--radius-card) border p-4 shadow-(--shadow-card)"
+      }
     >
       <div className="flex items-start justify-between gap-3">
-        <p className="truncate text-base font-bold">{room.title}</p>
+        <div className="flex min-w-0 items-center gap-1.5">
+          <p className="truncate text-base font-bold">{room.title}</p>
+          {isMine && (
+            <span className="bg-brand text-brand-foreground shrink-0 rounded px-1.5 py-0.5 text-xs font-semibold">
+              내가 만든 방
+            </span>
+          )}
+        </div>
         <span className="text-muted-foreground flex shrink-0 items-center gap-1 text-sm tabular-nums">
           <Users size={14} />
           {room.memberCount}/{room.maxMembers}
