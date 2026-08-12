@@ -7,8 +7,10 @@
 
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { signOut } from "@/app/actions/auth";
 import { SetupProfileForm } from "@/components/setup-profile-form";
 import { generateUsername } from "@/lib/utils/username";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 /**
@@ -59,6 +61,14 @@ export default async function SetupProfilePage({
         </CardHeader>
         <CardContent>
           <SetupProfileForm suggestedUsername={suggestedUsername} redirectPath={next} />
+          {/* 다른 계정으로 가입하고 싶거나 이 단계를 완료하지 않고 나가고 싶을 때의
+              탈출구 — 없으면 닉네임을 설정하기 전까진 로그인할 때마다 이 화면으로만
+              되돌아와 로그아웃할 방법이 없는 막다른 골목이 된다(§사용자 재현 확인). */}
+          <form action={signOut} className="mt-4 text-center">
+            <Button type="submit" variant="link" className="text-muted-foreground h-auto p-0">
+              다른 계정으로 로그인하기 (로그아웃)
+            </Button>
+          </form>
         </CardContent>
       </Card>
     </div>

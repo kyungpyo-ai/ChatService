@@ -55,7 +55,8 @@ export async function updateSession(request: NextRequest) {
     request.nextUrl.pathname.startsWith("/auth") ||
     request.nextUrl.pathname.startsWith("/api/cron") ||
     request.nextUrl.pathname.startsWith("/random") ||
-    request.nextUrl.pathname.startsWith("/rooms");
+    request.nextUrl.pathname.startsWith("/rooms") ||
+    request.nextUrl.pathname.startsWith("/legal");
 
   if (!isPublicPath && !user) {
     // no user, potentially respond by redirecting the user to the login page

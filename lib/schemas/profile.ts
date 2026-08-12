@@ -5,6 +5,7 @@
  */
 
 import { z } from "zod";
+import { containsBannedWord } from "@/lib/utils/content-filter";
 
 /**
  * 성별 스키마 — 남성/여성 중 필수 선택
@@ -38,9 +39,11 @@ export const setupProfileSchema = z.object({
     .string()
     .min(3, "닉네임은 최소 3자 이상이어야 합니다")
     .max(6, "닉네임은 최대 6자까지 가능합니다")
-    .regex(/^[a-zA-Z0-9가-힣_]+$/, "닉네임은 영문, 숫자, 한글, _만 사용 가능합니다"),
+    .regex(/^[a-zA-Z0-9가-힣_]+$/, "닉네임은 영문, 숫자, 한글, _만 사용 가능합니다")
+    .refine((v) => !containsBannedWord(v), "닉네임에 부적절한 표현이 포함되어 있습니다"),
   gender: genderSchema,
   age: ageSchema,
+  termsAgreed: z.literal(true, { message: "약관에 동의해야 가입할 수 있습니다" }),
 });
 
 /**
@@ -55,6 +58,7 @@ export const updateProfileSchema = z.object({
     .min(3, "닉네임은 최소 3자 이상이어야 합니다")
     .max(6, "닉네임은 최대 6자까지 가능합니다")
     .regex(/^[a-zA-Z0-9가-힣_]+$/, "닉네임은 영문, 숫자, 한글, _만 사용 가능합니다")
+    .refine((v) => !containsBannedWord(v), "닉네임에 부적절한 표현이 포함되어 있습니다")
     .optional(),
   full_name: z.string().optional(),
   avatar_url: z.string().url("올바른 URL을 입력하세요").optional().or(z.literal("")),

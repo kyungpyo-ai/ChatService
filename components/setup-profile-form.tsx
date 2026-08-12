@@ -12,6 +12,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Form,
   FormControl,
@@ -59,6 +60,7 @@ export function SetupProfileForm({ suggestedUsername, redirectPath }: SetupProfi
       // (실제 제출 값은 genderSchema의 "male"|"female"만 유효하므로 캐스팅 필요)
       gender: "" as unknown as SetupProfileInput["gender"],
       age: "",
+      termsAgreed: false as unknown as true,
     },
   });
 
@@ -70,6 +72,7 @@ export function SetupProfileForm({ suggestedUsername, redirectPath }: SetupProfi
       formData.append("username", data.username);
       formData.append("gender", data.gender);
       formData.append("age", String(data.age));
+      formData.append("termsAgreed", String(data.termsAgreed));
 
       // Server Action 호출
       const result = await setupProfileAction({ success: false, message: "" }, formData);
@@ -153,6 +156,46 @@ export function SetupProfileForm({ suggestedUsername, redirectPath }: SetupProfi
               <FormControl>
                 <Input type="number" placeholder="예: 25" {...field} disabled={isSubmitting} />
               </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        {/* 약관 동의 */}
+        <FormField
+          control={form.control}
+          name="termsAgreed"
+          render={({ field }) => (
+            <FormItem>
+              <div className="flex items-start gap-2">
+                <FormControl>
+                  <Checkbox
+                    checked={field.value}
+                    onCheckedChange={field.onChange}
+                    disabled={isSubmitting}
+                  />
+                </FormControl>
+                <FormLabel className="text-sm leading-normal font-normal">
+                  <a
+                    href="/legal/terms"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="underline underline-offset-2"
+                  >
+                    이용약관
+                  </a>{" "}
+                  및{" "}
+                  <a
+                    href="/legal/privacy"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="underline underline-offset-2"
+                  >
+                    개인정보처리방침
+                  </a>
+                  에 동의합니다 (필수)
+                </FormLabel>
+              </div>
               <FormMessage />
             </FormItem>
           )}

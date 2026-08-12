@@ -29,7 +29,7 @@ export type Database = {
       admin_audit_logs: {
         Row: {
           action: string;
-          admin_id: string;
+          admin_id: string | null;
           created_at: string;
           detail: Json | null;
           id: string;
@@ -38,7 +38,7 @@ export type Database = {
         };
         Insert: {
           action: string;
-          admin_id: string;
+          admin_id?: string | null;
           created_at?: string;
           detail?: Json | null;
           id?: string;
@@ -47,7 +47,7 @@ export type Database = {
         };
         Update: {
           action?: string;
-          admin_id?: string;
+          admin_id?: string | null;
           created_at?: string;
           detail?: Json | null;
           id?: string;
@@ -186,6 +186,7 @@ export type Database = {
           suspended_at: string | null;
           suspended_reason: string | null;
           suspended_until: string | null;
+          terms_accepted_at: string | null;
           updated_at: string | null;
           username: string | null;
           website: string | null;
@@ -205,6 +206,7 @@ export type Database = {
           suspended_at?: string | null;
           suspended_reason?: string | null;
           suspended_until?: string | null;
+          terms_accepted_at?: string | null;
           updated_at?: string | null;
           username?: string | null;
           website?: string | null;
@@ -224,6 +226,7 @@ export type Database = {
           suspended_at?: string | null;
           suspended_reason?: string | null;
           suspended_until?: string | null;
+          terms_accepted_at?: string | null;
           updated_at?: string | null;
           username?: string | null;
           website?: string | null;
@@ -568,7 +571,6 @@ export type Database = {
           random_active_participants: number;
           random_queue_waiting_count: number;
           random_sessions_matched: number;
-          room_active_users: number;
           rooms_created: number;
           rooms_deleted: number;
           total_users: number;
@@ -625,7 +627,6 @@ export type Database = {
           random_active_participants: number;
           random_queue_waiting_count: number;
           random_sessions_matched_today: number;
-          room_active_users: number;
           rooms_created_today: number;
           rooms_deleted_today: number;
           total_users: number;

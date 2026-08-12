@@ -62,6 +62,7 @@ export async function setupProfileAction(
       username: formData.get("username"),
       gender: formData.get("gender"),
       age: formData.get("age"),
+      termsAgreed: formData.get("termsAgreed") === "true",
     });
 
     if (!validatedFields.success) {
@@ -92,6 +93,7 @@ export async function setupProfileAction(
         username: validatedFields.data.username,
         gender: validatedFields.data.gender,
         age: Number(validatedFields.data.age),
+        terms_accepted_at: new Date().toISOString(),
       })
       .eq("id", user.id);
 

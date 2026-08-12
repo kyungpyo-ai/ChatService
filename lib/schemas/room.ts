@@ -3,6 +3,7 @@
  */
 
 import { z } from "zod";
+import { containsBannedWord } from "@/lib/utils/content-filter";
 
 /**
  * 방 생성 스키마
@@ -15,7 +16,8 @@ export const createRoomSchema = z
     title: z
       .string()
       .min(1, "방 제목을 입력해주세요")
-      .max(50, "방 제목은 최대 50자까지 가능합니다"),
+      .max(50, "방 제목은 최대 50자까지 가능합니다")
+      .refine((v) => !containsBannedWord(v), "방 제목에 부적절한 표현이 포함되어 있습니다"),
     maxMembers: z
       .string()
       .min(1, "최대 인원을 입력해주세요")
