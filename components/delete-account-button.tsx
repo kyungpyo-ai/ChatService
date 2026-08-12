@@ -43,7 +43,12 @@ export function DeleteAccountButton() {
         return;
       }
       await createClient().auth.signOut();
+      // (main)/layout.tsx가 /profile과 / 양쪽에 걸친 공용 레이아웃이라, router.push만으로는
+      // 이미 렌더링된 레이아웃(로그인 상태 포함)이 재사용되고 서버 데이터가 다시 조회되지
+      // 않는다. refresh()로 현재 라우트의 서버 컴포넌트 트리를 강제로 다시 가져와야
+      // 헤더/사이드바가 로그아웃 상태로 갱신된다.
       router.push("/");
+      router.refresh();
     });
   };
 
