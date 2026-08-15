@@ -2,8 +2,11 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { formatChatTime } from "@/lib/utils/date";
-import { sendRoomImageMessageAction, sendRoomMessageAction } from "@/app/actions/messages";
+import {
+  loadOlderRoomMessagesAction,
+  sendRoomImageMessageAction,
+  sendRoomMessageAction,
+} from "@/app/actions/messages";
 import { createChatImageUploadUrlAction } from "@/app/actions/chat-images";
 import {
   CHAT_IMAGES_BUCKET,
@@ -16,6 +19,11 @@ import {
 import { showError } from "@/lib/utils/toast";
 import type { ChatMessage } from "@/components/chat/chat-message-bubble";
 import type { RoomMember } from "@/lib/queries/rooms";
+
+// lib/queries/rooms.ts의 MESSAGES_PAGE_SIZE와 같은 값을 별도로 둔다 — 그 파일은
+// next/headers를 쓰는 서버 전용 lib/supabase/server.ts를 값으로 import하고 있어, 여기서
+// 값(런타임) import로 가져오면 서버 전용 코드가 클라이언트 번들에 섞여 들어가 깨진다.
+const MESSAGES_PAGE_SIZE = 50;
 
 interface MessageRow {
   id: string;
@@ -35,6 +43,9 @@ interface RoomLiveState {
   participants: RoomMember[];
   roomDeleted: boolean;
   kicked: boolean;
+  hasMoreHistory: boolean;
+  loadingOlderMessages: boolean;
+  loadOlderMessages: () => Promise<void>;
   sendMessage: (content: string) => Promise<void>;
   sendImageMessage: (file: File) => Promise<void>;
 }
@@ -77,6 +88,13 @@ export function useRoomMessages(
   const [participants, setParticipants] = useState<RoomMember[]>(initialParticipants);
   const [roomDeleted, setRoomDeleted] = useState(false);
   const [kicked, setKicked] = useState(false);
+  // 초기 로드가 페이지 크기만큼 꽉 찼다면 그보다 오래된 메시지가 더 있을 가능성이 있다고
+  // 본다 — 정확한 값은 아니지만(딱 그 개수만큼만 있는 경우와 구분 불가), 그 경우 첫 "더
+  // 보기" 호출이 빈 결과를 받고 hasMore를 false로 내려주므로 최악의 경우도 헛수고 한 번뿐이다.
+  const [hasMoreHistory, setHasMoreHistory] = useState(
+    initialMessages.length >= MESSAGES_PAGE_SIZE
+  );
+  const [loadingOlderMessages, setLoadingOlderMessages] = useState(false);
   const participantsRef = useRef<RoomMember[]>(initialParticipants);
   const roomDeletedRef = useRef(false);
   // 내가 보낸 메시지 중 아직 Realtime INSERT로 되돌아오지 않은 것들의 대기 큐(FIFO)
@@ -135,7 +153,7 @@ export function useRoomMessages(
                           senderAvatarUrl: sender?.avatarUrl,
                           content: row.content_type === "text" ? row.content : "",
                           imageUrl,
-                          createdAt: formatChatTime(row.created_at),
+                          createdAt: row.created_at,
                         }
                       : m
                   );
@@ -155,7 +173,7 @@ export function useRoomMessages(
                   senderAvatarUrl: sender?.avatarUrl,
                   content: row.content_type === "text" ? row.content : "",
                   imageUrl,
-                  createdAt: formatChatTime(row.created_at),
+                  createdAt: row.created_at,
                 },
               ];
             });
@@ -240,7 +258,7 @@ export function useRoomMessages(
                 senderId: p.id,
                 senderName: p.nickname,
                 content: `${p.nickname}님이 입장했습니다`,
-                createdAt: formatChatTime(now),
+                createdAt: now,
                 isSystemNotice: true,
               });
             }
@@ -255,7 +273,7 @@ export function useRoomMessages(
                 senderId: p.id,
                 senderName: p.nickname,
                 content: `${p.nickname}님이 나갔습니다`,
-                createdAt: formatChatTime(now),
+                createdAt: now,
                 isSystemNotice: true,
               });
             }
@@ -282,6 +300,34 @@ export function useRoomMessages(
     };
   }, [roomId, currentUserId]);
 
+  // "이전 대화 더 보기" — 현재 가장 오래된 메시지의 시각을 커서로 그보다 이전 메시지를 불러와
+  // 목록 앞에 붙인다. 시스템 알림(입장/퇴장, isSystemNotice)이나 아직 서버에 반영되지 않은
+  // 낙관적 전송 메시지(temp- id)는 커서로 삼기에 부적절하므로 건너뛰고 실제 DB 메시지 중
+  // 가장 오래된 것을 찾는다.
+  const loadOlderMessages = useCallback(async () => {
+    if (loadingOlderMessages || !hasMoreHistory) return;
+
+    const oldestRealMessage = messages.find((m) => !m.isSystemNotice && !m.id.startsWith("temp-"));
+    if (!oldestRealMessage) {
+      setHasMoreHistory(false);
+      return;
+    }
+
+    setLoadingOlderMessages(true);
+    const result = await loadOlderRoomMessagesAction(roomId, oldestRealMessage.createdAt);
+    setLoadingOlderMessages(false);
+
+    if (!result.success || !result.data) {
+      setHasMoreHistory(false);
+      return;
+    }
+
+    setHasMoreHistory(result.data.hasMore);
+    if (result.data.messages.length > 0) {
+      setMessages((prev) => [...result.data!.messages, ...prev]);
+    }
+  }, [roomId, messages, hasMoreHistory, loadingOlderMessages]);
+
   const sendMessage = useCallback(
     async (content: string) => {
       const trimmed = content.trim();
@@ -296,7 +342,7 @@ export function useRoomMessages(
         senderName: self?.nickname ?? "나",
         senderAvatarUrl: self?.avatarUrl,
         content: trimmed,
-        createdAt: formatChatTime(new Date().toISOString()),
+        createdAt: new Date().toISOString(),
       };
 
       pendingSendsRef.current.push({ tempId, content: trimmed });
@@ -337,7 +383,7 @@ export function useRoomMessages(
         senderAvatarUrl: self?.avatarUrl,
         content: "",
         imageUrl: previewUrl,
-        createdAt: formatChatTime(new Date().toISOString()),
+        createdAt: new Date().toISOString(),
       };
       setMessages((prev) => [...prev, optimisticMessage]);
 
@@ -383,5 +429,15 @@ export function useRoomMessages(
     [roomId, currentUserId]
   );
 
-  return { messages, participants, roomDeleted, kicked, sendMessage, sendImageMessage };
+  return {
+    messages,
+    participants,
+    roomDeleted,
+    kicked,
+    hasMoreHistory,
+    loadingOlderMessages,
+    loadOlderMessages,
+    sendMessage,
+    sendImageMessage,
+  };
 }

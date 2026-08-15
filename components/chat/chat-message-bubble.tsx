@@ -6,6 +6,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { createClient } from "@/lib/supabase/client";
 import { CHAT_IMAGES_BUCKET, getSignedChatImageUrl } from "@/lib/storage/chat-images";
+import { formatChatTime } from "@/lib/utils/date";
 import { cn } from "@/lib/utils";
 
 export interface ChatMessage {
@@ -15,6 +16,7 @@ export interface ChatMessage {
   senderAvatarUrl?: string | null;
   content: string;
   imageUrl?: string | null;
+  /** ISO 8601 원본 타임스탬프 — 표시용 포맷(formatChatTime)은 렌더 시점에 적용한다 */
   createdAt: string;
   isSystemNotice?: boolean;
 }
@@ -161,7 +163,9 @@ export function ChatMessageBubble({ message, variant }: ChatMessageBubbleProps) 
               message.content
             )}
           </div>
-          <span className="text-muted-foreground shrink-0 text-[10px]">{message.createdAt}</span>
+          <span className="text-muted-foreground shrink-0 text-[10px]" suppressHydrationWarning>
+            {formatChatTime(message.createdAt)}
+          </span>
         </div>
       </div>
     </div>

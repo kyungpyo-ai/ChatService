@@ -111,3 +111,29 @@ export function formatChatTime(createdAt: string): string {
     minute: "2-digit",
   });
 }
+
+/**
+ * 채팅 메시지 목록의 날짜 구분선 표시 포맷 ("2026년 8월 15일 토요일")
+ */
+export function formatChatDate(createdAt: string): string {
+  return new Date(createdAt).toLocaleDateString("ko-KR", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    weekday: "long",
+  });
+}
+
+/**
+ * 같은 로컬 날짜(연/월/일)인지 비교한다 — 채팅 메시지 목록에서 날짜가 바뀔 때만
+ * 구분선을 넣기 위해 사용한다.
+ */
+export function isSameLocalDate(a: string, b: string): boolean {
+  const dateA = new Date(a);
+  const dateB = new Date(b);
+  return (
+    dateA.getFullYear() === dateB.getFullYear() &&
+    dateA.getMonth() === dateB.getMonth() &&
+    dateA.getDate() === dateB.getDate()
+  );
+}

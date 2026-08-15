@@ -12,7 +12,9 @@ import {
   parseChatImagePath,
 } from "@/lib/storage/chat-images";
 import { checkRateLimit } from "@/lib/utils/rate-limit";
+import { getOlderRoomMessages } from "@/lib/queries/rooms";
 import type { ActionResult } from "@/lib/types/forms";
+import type { ChatMessage } from "@/components/chat/chat-message-bubble";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 /**
@@ -67,6 +69,32 @@ export async function sendRoomMessageAction(
     return { success: true, message: "" };
   } catch {
     return { success: false, message: "메시지 전송 중 오류가 발생했습니다." };
+  }
+}
+
+/**
+ * 방채팅 "이전 대화 더 보기" — 주어진 시각(beforeCreatedAt)보다 오래된 메시지를 최대 50개
+ * 더 불러온다. 클라이언트에서 스크롤을 맨 위로 올렸을 때 호출된다.
+ *
+ * 로그인 여부만 확인하고, 실제 조회 범위(참여자 여부·입장 시점 이후)는 messages SELECT
+ * RLS가 최종 방어선이다 — 비참여자나 입장 이전 메시지는 애초에 조회되지 않는다.
+ */
+export async function loadOlderRoomMessagesAction(
+  roomId: string,
+  beforeCreatedAt: string
+): Promise<ActionResult<{ messages: ChatMessage[]; hasMore: boolean }>> {
+  try {
+    const supabase = await createClient();
+
+    const { data, error: authError } = await supabase.auth.getClaims();
+    if (authError || !data?.claims?.sub) {
+      return { success: false, message: "로그인이 필요합니다." };
+    }
+
+    const result = await getOlderRoomMessages(roomId, beforeCreatedAt);
+    return { success: true, message: "", data: result };
+  } catch {
+    return { success: false, message: "이전 대화를 불러오지 못했습니다." };
   }
 }
 

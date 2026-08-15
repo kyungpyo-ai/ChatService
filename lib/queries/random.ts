@@ -5,7 +5,6 @@
  */
 
 import { createClient } from "@/lib/supabase/server";
-import { formatChatTime } from "@/lib/utils/date";
 import { getSignedChatImageUrls } from "@/lib/storage/chat-images";
 import type { ChatMessage } from "@/components/chat/chat-message-bubble";
 
@@ -96,6 +95,6 @@ export async function getRandomSessionMessages(
     content: message.content_type === "text" ? message.content : "",
     imageUrl:
       message.content_type === "image" ? (signedUrlByPath.get(message.content) ?? null) : null,
-    createdAt: formatChatTime(message.created_at),
+    createdAt: message.created_at,
   }));
 }

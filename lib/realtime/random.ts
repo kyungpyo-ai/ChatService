@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { formatChatTime } from "@/lib/utils/date";
 import { sendRandomImageMessageAction, sendRandomMessageAction } from "@/app/actions/messages";
 import { createChatImageUploadUrlAction } from "@/app/actions/chat-images";
 import { endRandomSessionAction, heartbeatRandomSessionAction } from "@/app/actions/random";
@@ -160,7 +159,7 @@ export function useRandomSessionMessages(
                           senderName: "나",
                           content: row.content_type === "text" ? row.content : "",
                           imageUrl,
-                          createdAt: formatChatTime(row.created_at),
+                          createdAt: row.created_at,
                         }
                       : m
                   );
@@ -179,7 +178,7 @@ export function useRandomSessionMessages(
                   senderName: row.sender_id === currentUserId ? "나" : "상대방",
                   content: row.content_type === "text" ? row.content : "",
                   imageUrl,
-                  createdAt: formatChatTime(row.created_at),
+                  createdAt: row.created_at,
                 },
               ];
             });
@@ -287,7 +286,7 @@ export function useRandomSessionMessages(
         senderId: currentUserId,
         senderName: "나",
         content: trimmed,
-        createdAt: formatChatTime(new Date().toISOString()),
+        createdAt: new Date().toISOString(),
       };
 
       pendingSendsRef.current.push({ tempId, content: trimmed });
@@ -326,7 +325,7 @@ export function useRandomSessionMessages(
         senderName: "나",
         content: "",
         imageUrl: previewUrl,
-        createdAt: formatChatTime(new Date().toISOString()),
+        createdAt: new Date().toISOString(),
       };
       setMessages((prev) => [...prev, optimisticMessage]);
 

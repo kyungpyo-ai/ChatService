@@ -23,7 +23,7 @@ export function CreateRoomForm() {
     resolver: zodResolver(createRoomSchema),
     defaultValues: {
       title: "",
-      maxMembers: "20",
+      maxMembers: "2",
       isPrivate: false,
       password: "",
     },
@@ -85,7 +85,7 @@ export function CreateRoomForm() {
                   type="number"
                   min={2}
                   max={50}
-                  placeholder="예: 20"
+                  placeholder="예: 2"
                   {...field}
                   disabled={isSubmitting}
                 />

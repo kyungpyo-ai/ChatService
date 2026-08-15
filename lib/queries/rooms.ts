@@ -5,7 +5,6 @@
  */
 
 import { createClient } from "@/lib/supabase/server";
-import { formatChatTime } from "@/lib/utils/date";
 import { getSignedChatImageUrls } from "@/lib/storage/chat-images";
 import type { ChatMessage } from "@/components/chat/chat-message-bubble";
 
@@ -256,12 +255,12 @@ interface RoomMessageRow {
 /** 탈퇴한 사용자가 남긴 메시지의 표시용 이름 (§ROADMAP Phase 7, sender_id ON DELETE SET NULL) */
 const DELETED_USER_NAME = "탈퇴한 사용자";
 
+/** 메시지 목록을 한 번에 가져오는 페이지 크기 — 초기 로드와 "이전 대화 더 보기"에 공통 사용 */
+export const MESSAGES_PAGE_SIZE = 50;
+
 /**
- * 방채팅 초기 메시지 목록 조회 (최근 50개) — 이후 실시간 갱신은 lib/realtime/messages.ts의 useRoomMessages가 담당
- *
- * 조회 범위는 "내가 입장한 시점 이후"로 제한된다(오픈채팅 방식). 이 필터링은 messages SELECT
- * RLS(`created_at >= room_member_joined_at(room_id)`)가 담당하므로 여기서 별도 조건을 걸지
- * 않는다 — RLS가 limit보다 먼저 적용되어, 입장 이후 메시지 중 최근 50개가 조회된다.
+ * 방채팅 메시지 행(row)을 화면 표시용 ChatMessage[]로 변환한다 — 발신자 프로필 조회, 이미지
+ * 서명 URL 배치 발급을 공통으로 처리한다(getRoomMessages/getOlderRoomMessages 공용).
  *
  * messages.sender_id는 게스트도 보낼 수 있는 랜덤채팅과 컬럼을 공유하느라 profiles가 아니라
  * auth.users를 참조하도록 되어 있어(§게스트/실사용자 분리), `profiles!messages_sender_id_fkey`
@@ -269,25 +268,10 @@ const DELETED_USER_NAME = "탈퇴한 사용자";
  * guest_cannot_join_room) 보낸 사람은 항상 profiles에 있다고 보고, 메시지와 프로필을 각각
  * 조회해 sender_id 기준으로 직접 합친다.
  */
-export async function getRoomMessages(roomId: string): Promise<ChatMessage[]> {
-  const supabase = await createClient();
-
-  // "최근 50개"를 가져오려면 최신순(desc)으로 자른 뒤 표시용으로 시간순(asc)으로 되돌려야 한다.
-  // asc + limit(50)으로 자르면 방에 메시지가 50개를 넘는 순간 가장 오래된 50개만 보이고
-  // 최근 대화가 통째로 사라진다.
-  const { data: latestMessages, error } = await supabase
-    .from("messages")
-    .select("id, sender_id, content, content_type, created_at")
-    .eq("room_id", roomId)
-    .order("created_at", { ascending: false })
-    .limit(50);
-
-  if (error || !latestMessages) {
-    return [];
-  }
-
-  const messages = [...latestMessages].reverse();
-
+async function mapRoomMessageRows(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  messages: RoomMessageRow[]
+): Promise<ChatMessage[]> {
   const senderIds = [
     ...new Set(messages.map((m) => m.sender_id).filter((id): id is string => id !== null)),
   ];
@@ -302,7 +286,7 @@ export async function getRoomMessages(roomId: string): Promise<ChatMessage[]> {
   // 이미지 메시지의 Storage 경로를 모아 서명 URL을 한 번에 배치 발급한다(메시지마다 개별
   // 발급하지 않음, §DEVELOPMENT_PLAN 6.1 (4)). content는 비공개 버킷 경로일 뿐 URL이
   // 아니므로 그대로 <Image src>에 넘기면 깨진 이미지가 뜬다.
-  const imagePaths = (messages as RoomMessageRow[])
+  const imagePaths = messages
     .filter((message) => message.content_type === "image")
     .map((message) => message.content);
   const signedUrlByPath = await getSignedChatImageUrls(supabase, imagePaths);
@@ -311,7 +295,7 @@ export async function getRoomMessages(roomId: string): Promise<ChatMessage[]> {
   // SET NULL) — 메시지 자체는 계속 보이되 "탈퇴한 사용자"로 표시한다. 이전에는 sender를
   // 못 찾으면 메시지 자체를 걸러냈지만, 탈퇴 후에는 항상 못 찾으므로 그러면 대화가 통째로
   // 사라진다.
-  return (messages as RoomMessageRow[]).map((message) => {
+  return messages.map((message) => {
     const sender = message.sender_id ? senderById.get(message.sender_id) : undefined;
     return {
       id: message.id,
@@ -321,7 +305,64 @@ export async function getRoomMessages(roomId: string): Promise<ChatMessage[]> {
       content: message.content_type === "text" ? message.content : "",
       imageUrl:
         message.content_type === "image" ? (signedUrlByPath.get(message.content) ?? null) : null,
-      createdAt: formatChatTime(message.created_at),
+      createdAt: message.created_at,
     };
   });
+}
+
+/**
+ * 방채팅 초기 메시지 목록 조회 (최근 50개) — 이후 실시간 갱신은 lib/realtime/messages.ts의
+ * useRoomMessages가 담당하고, 그보다 오래된 메시지는 getOlderRoomMessages가 담당한다.
+ *
+ * 조회 범위는 "내가 입장한 시점 이후"로 제한된다(오픈채팅 방식). 이 필터링은 messages SELECT
+ * RLS(`created_at >= room_member_joined_at(room_id)`)가 담당하므로 여기서 별도 조건을 걸지
+ * 않는다 — RLS가 limit보다 먼저 적용되어, 입장 이후 메시지 중 최근 50개가 조회된다.
+ */
+export async function getRoomMessages(roomId: string): Promise<ChatMessage[]> {
+  const supabase = await createClient();
+
+  // "최근 50개"를 가져오려면 최신순(desc)으로 자른 뒤 표시용으로 시간순(asc)으로 되돌려야 한다.
+  // asc + limit으로 자르면 방에 메시지가 페이지 크기를 넘는 순간 가장 오래된 메시지만 보이고
+  // 최근 대화가 통째로 사라진다.
+  const { data: latestMessages, error } = await supabase
+    .from("messages")
+    .select("id, sender_id, content, content_type, created_at")
+    .eq("room_id", roomId)
+    .order("created_at", { ascending: false })
+    .limit(MESSAGES_PAGE_SIZE);
+
+  if (error || !latestMessages) {
+    return [];
+  }
+
+  return mapRoomMessageRows(supabase, [...latestMessages].reverse() as RoomMessageRow[]);
+}
+
+/**
+ * `beforeCreatedAt`보다 이전에 온 메시지를 최대 50개 더 조회한다 ("이전 대화 더 보기").
+ *
+ * getRoomMessages와 마찬가지로 messages SELECT RLS가 "내가 입장한 시점 이후" 범위를 이미
+ * 강제하므로, 스크롤을 계속 올려도 입장 이전 메시지는 자연스럽게 조회되지 않고 hasMore가
+ * false가 된다 — 별도의 하한 경계 처리가 필요 없다.
+ */
+export async function getOlderRoomMessages(
+  roomId: string,
+  beforeCreatedAt: string
+): Promise<{ messages: ChatMessage[]; hasMore: boolean }> {
+  const supabase = await createClient();
+
+  const { data: rows, error } = await supabase
+    .from("messages")
+    .select("id, sender_id, content, content_type, created_at")
+    .eq("room_id", roomId)
+    .lt("created_at", beforeCreatedAt)
+    .order("created_at", { ascending: false })
+    .limit(MESSAGES_PAGE_SIZE);
+
+  if (error || !rows) {
+    return { messages: [], hasMore: false };
+  }
+
+  const messages = await mapRoomMessageRows(supabase, [...rows].reverse() as RoomMessageRow[]);
+  return { messages, hasMore: rows.length === MESSAGES_PAGE_SIZE };
 }

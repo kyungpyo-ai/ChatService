@@ -114,7 +114,7 @@ export function RandomChatView({
               senderId: "system",
               senderName: "system",
               content: partnerEnded ? "상대방이 대화를 종료했습니다." : "대화를 종료했습니다.",
-              createdAt: "",
+              createdAt: new Date().toISOString(),
               isSystemNotice: true,
             }}
             variant="other"
