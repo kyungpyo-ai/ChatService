@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { TransitionLink } from "@/components/ui/transition-link";
 import {
   Home,
   Shuffle,
@@ -50,7 +51,7 @@ export function SidebarNav({ isLoggedIn, avatarUrl, nickname }: SidebarNavProps)
         {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
           const isActive = href === "/" ? pathname === "/" : pathname.startsWith(href);
           return (
-            <Link
+            <TransitionLink
               key={href}
               href={href}
               className={cn(
@@ -62,7 +63,7 @@ export function SidebarNav({ isLoggedIn, avatarUrl, nickname }: SidebarNavProps)
             >
               <Icon size={18} />
               {label}
-            </Link>
+            </TransitionLink>
           );
         })}
       </nav>

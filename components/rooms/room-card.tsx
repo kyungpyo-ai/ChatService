@@ -1,5 +1,5 @@
-import Link from "next/link";
 import { Lock, Users, Mars, Venus } from "lucide-react";
+import { TransitionLink } from "@/components/ui/transition-link";
 import type { RoomListItem } from "@/lib/queries/rooms";
 
 interface RoomCardProps {
@@ -23,7 +23,7 @@ export function RoomCard({ room, currentUserId }: RoomCardProps) {
   const isMine = room.ownerId === currentUserId;
 
   return (
-    <Link
+    <TransitionLink
       href={`/rooms/${room.id}`}
       // app/(main)/rooms/[roomId]/page.tsx는 비참여자가 접근하면 렌더링 중에 join_room()을
       // 호출해 자동 입장시킨다 — prefetch가 켜져 있으면 카드가 뷰포트에 보이기만 해도(클릭
@@ -73,6 +73,6 @@ export function RoomCard({ room, currentUserId }: RoomCardProps) {
           <Lock size={14} />
         </span>
       )}
-    </Link>
+    </TransitionLink>
   );
 }

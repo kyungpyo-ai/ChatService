@@ -1,8 +1,8 @@
 "use client";
 
-import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Home, Shuffle, MessagesSquare, Search, UserRound } from "lucide-react";
+import { TransitionLink } from "@/components/ui/transition-link";
 import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
@@ -24,7 +24,7 @@ export function BottomNav() {
       {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
         const isActive = href === "/" ? pathname === "/" : pathname.startsWith(href);
         return (
-          <Link
+          <TransitionLink
             key={href}
             href={href}
             className={cn(
@@ -34,7 +34,7 @@ export function BottomNav() {
           >
             <Icon size={20} />
             {label}
-          </Link>
+          </TransitionLink>
         );
       })}
     </nav>

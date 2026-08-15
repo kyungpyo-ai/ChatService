@@ -157,12 +157,15 @@ export async function joinRoomAction(
  * leave_room() DB 함수(SECURITY DEFINER)가 처리한다. 방장이 나가면 방 자체가 삭제되고,
  * 일반 참여자면 room_members 행만 삭제된다(§ROADMAP Phase 4).
  *
- * 성공 시 반드시 redirect()로 이동한다 — 클라이언트에서 router.push()로 라우팅했을 때,
- * Next.js가 Server Action 호출 직후 "이 액션이 호출된 현재 페이지"를 자동으로 새로고침하는
- * 시점이 router.push보다 먼저 온다. 이 새로고침이 방 상세 페이지(app/(main)/rooms/[roomId]/
- * page.tsx)의 "공개방 즉시입장" 로직(비멤버면 join_room 자동 호출)을 다시 실행시켜, 나가기
- * 직후 곧바로 재입장되는 버그가 있었다(§실사용 확인). redirect()는 현재 라우트를 다시
- * 렌더링하지 않고 곧장 새 경로로 이동시키므로 이 문제를 원천적으로 피한다.
+ * 여기서 redirect()를 호출하지 않는다 — 호출부(components/rooms/room-chat-view.tsx의
+ * handleLeave)가 이 액션의 응답을 기다리지 않고 곧바로 클라이언트에서 router.push("/rooms")로
+ * 이동시킨다. 예전에는 이 액션이 성공 시 redirect()로 이동을 전담했었는데(재입장 버그
+ * 방지), 클라이언트가 이미 즉시 이동하는 지금 구조에서는 그 redirect()가 RPC 왕복이 끝난
+ * 뒤(수백ms~1초 뒤) 뒤늦게 또 한 번 /rooms으로 내비게이션을 일으켜, 방을 나간 직후 방
+ * 목록에 "다시 들어가지는" 것처럼 화면이 한 번 더 깜빡이는 원인이 됐다(§실사용 확인,
+ * 2026-08-15). 클라이언트가 이미 이 방 화면을 벗어난 뒤이므로 재입장 버그(§app/(main)/
+ * rooms/[roomId]/page.tsx의 공개방 즉시입장 로직 재실행)가 재현되지 않는 것은 그대로
+ * 유지된다 — 그 버그는 "같은 페이지에 머무른 채 액션을 기다리는" 경우에만 발생했다.
  */
 export async function leaveRoomAction(roomId: string): Promise<ActionResult> {
   const supabase = await createClient();
@@ -183,7 +186,7 @@ export async function leaveRoomAction(roomId: string): Promise<ActionResult> {
   }
 
   revalidatePath("/rooms");
-  redirect("/rooms");
+  return { success: true, message: "" };
 }
 
 /**

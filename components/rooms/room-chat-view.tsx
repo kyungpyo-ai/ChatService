@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { startTransition, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ChatHeader } from "@/components/chat/chat-header";
 import { PinnedNoticeBar } from "@/components/chat/pinned-notice-bar";
@@ -125,12 +125,31 @@ export function RoomChatView({
     }
   };
 
-  const handleLeave = async () => {
+  const handleLeave = () => {
     setLeaveDialogOpen(false);
-    // 성공 시 leaveRoomAction 내부에서 redirect()로 이동하므로(재입장 버그 방지, §app/actions/rooms.ts)
-    // 여기 도달하는 건 실패한 경우뿐이다.
-    const result = await leaveRoomAction(roomId);
-    showError(result.message);
+    // leave_room RPC 왕복(네트워크 지연)을 기다리지 않고 곧장 방 목록으로 이동한다 — 실패해도
+    // 이미 방을 나간 것처럼 보이는 게 어색하지 않고, 실패 시에는 아래에서 토스트로 알려준다.
+    // leaveRoomAction은 redirect()를 호출하지 않는다(§app/actions/rooms.ts) — 예전엔 액션이
+    // 이동까지 전담했는데, 지금처럼 클라이언트가 먼저 이동한 뒤에도 액션이 뒤늦게 redirect()로
+    // 한 번 더 이동시키면 RPC가 끝나는 시점(수백ms~1초 뒤)에 방 목록으로 "다시 들어가지는"
+    // 것처럼 화면이 한 번 더 깜빡이는 문제가 있었다(§실사용 확인). 재입장 버그(비멤버가 되면
+    // 방 상세 페이지가 자동 재입장시키는 로직)는 애초에 "같은 페이지에 머무른 채 액션 응답을
+    // 기다릴 때"만 발생했으므로, 여기서 먼저 떠나버리는 지금 구조에서는 redirect() 없이도
+    // 재현되지 않는다.
+    //
+    // startTransition으로 감싸는 이유: 그냥 router.push()만 하면 /rooms의 loading.tsx가
+    // 곧바로 화면을 대체해버려서 "빈 화면 → 깜빡임 → 목록"처럼 보인다(실사용 확인). transition
+    // 안에서 push하면 Next가 목적지 데이터가 실제로 준비될 때까지 지금 화면을 그대로 유지하다가
+    // 한 번에 교체한다 — 로컬처럼 응답이 빠르면 스켈레톤이 아예 안 보이고, 느릴 때만 자연스럽게
+    // loading.tsx로 넘어간다.
+    startTransition(() => {
+      router.push("/rooms");
+    });
+    void leaveRoomAction(roomId).then((result) => {
+      if (!result.success) {
+        showError(result.message);
+      }
+    });
   };
 
   return (

@@ -1,8 +1,8 @@
 "use client";
 
-import Link from "next/link";
 import { ChevronLeft, Flag, LogOut, MoreVertical, ShieldCheck, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { TransitionLink } from "@/components/ui/transition-link";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -39,11 +39,11 @@ export function ChatHeader({
 }: ChatHeaderProps) {
   return (
     <header className="bg-surface/95 sticky top-0 z-30 flex h-14 items-center gap-2 border-b px-3 backdrop-blur">
-      <Link href={backHref} aria-label="뒤로가기">
+      <TransitionLink href={backHref} aria-label="뒤로가기">
         <Button variant="ghost" size="icon" className="shrink-0">
           <ChevronLeft size={20} />
         </Button>
-      </Link>
+      </TransitionLink>
 
       <div className="min-w-0 flex-1">
         <p className="truncate font-semibold">{title}</p>
