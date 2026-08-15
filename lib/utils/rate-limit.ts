@@ -8,8 +8,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 export const RATE_LIMITS = {
-  send_message: { maxCount: 10, windowSeconds: 10 },
-  upload_image: { maxCount: 10, windowSeconds: 60 },
+  send_message: { maxCount: 30, windowSeconds: 10 },
 } as const;
 
 export type RateLimitAction = keyof typeof RATE_LIMITS;

@@ -15,7 +15,6 @@ import {
   type ChatImageContext,
 } from "@/lib/storage/chat-images";
 import { CHAT_IMAGES_BUCKET } from "@/lib/storage/chat-images";
-import { checkRateLimit } from "@/lib/utils/rate-limit";
 import type { ActionResult } from "@/lib/types/forms";
 
 export interface ChatImageUploadTicket {
@@ -55,14 +54,6 @@ export async function createChatImageUploadUrlAction(
 
     if (authError || !userId) {
       return { success: false, message: "로그인이 필요합니다." };
-    }
-
-    const withinRateLimit = await checkRateLimit(supabase, "upload_image");
-    if (!withinRateLimit) {
-      return {
-        success: false,
-        message: "이미지 업로드 횟수 제한을 초과했습니다. 잠시 후 다시 시도해주세요.",
-      };
     }
 
     if (context === "rooms") {

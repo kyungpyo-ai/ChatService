@@ -86,14 +86,6 @@ export async function createRoomAction(
       .single();
 
     if (insertError || !room) {
-      // enforce_max_rooms_per_owner 트리거가 막은 경우(1인 최대 3방) 다른 삽입 실패와
-      // 구분해 사용자가 원인을 알 수 있는 메시지를 보여준다.
-      if (insertError?.message.includes("max_rooms_exceeded")) {
-        return {
-          success: false,
-          message: "방은 최대 3개까지 만들 수 있습니다. 기존 방을 나간 뒤 다시 시도해주세요.",
-        };
-      }
       return { success: false, message: "방 생성에 실패했습니다." };
     }
 
