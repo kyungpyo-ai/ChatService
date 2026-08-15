@@ -123,10 +123,10 @@ export async function setupProfileAction(
  * 프로필 수정 액션
  *
  * 사용자가 프로필 정보를 수정할 때 사용합니다.
- * 닉네임, 이름, 아바타, 웹사이트를 업데이트할 수 있습니다.
+ * 닉네임, 이름, 아바타를 업데이트할 수 있습니다.
  *
  * @param _prevState - 이전 상태 (React Hook Form용)
- * @param formData - 폼 데이터 (username?, full_name?, avatar_url?, website?, gender?, age?)
+ * @param formData - 폼 데이터 (username?, full_name?, avatar_url?, gender?, age?)
  * @returns ActionResult - 성공/실패 결과
  *
  * @example
@@ -136,7 +136,6 @@ export async function setupProfileAction(
  *   <input name="username" />
  *   <input name="full_name" />
  *   <input name="avatar_url" />
- *   <input name="website" />
  *   <input name="gender" />
  *   <input name="age" />
  * </form>
@@ -167,7 +166,6 @@ export async function updateProfileAction(
       username: formData.get("username") || undefined,
       full_name: formData.get("full_name") || undefined,
       avatar_url: formData.get("avatar_url") || undefined,
-      website: formData.get("website") || undefined,
       gender: formData.get("gender") || undefined,
       age: formData.get("age") || undefined,
     });
@@ -203,8 +201,6 @@ export async function updateProfileAction(
       updateData.full_name = validatedFields.data.full_name;
     if (validatedFields.data.avatar_url !== undefined)
       updateData.avatar_url = validatedFields.data.avatar_url;
-    if (validatedFields.data.website !== undefined)
-      updateData.website = validatedFields.data.website;
     if (validatedFields.data.gender !== undefined) updateData.gender = validatedFields.data.gender;
     if (validatedFields.data.age !== undefined) updateData.age = Number(validatedFields.data.age);
 

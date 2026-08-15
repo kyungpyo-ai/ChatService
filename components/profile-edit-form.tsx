@@ -30,11 +30,14 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Card, CardContent } from "@/components/ui/card";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { updateProfileSchema, type UpdateProfileInput } from "@/lib/schemas/profile";
 import { showSuccess, showError } from "@/lib/utils/toast";
 import { updateProfileAction, checkUsernameAction } from "@/app/actions/profile";
+import { uploadAvatar, AVATAR_ALLOWED_MIME_TYPES } from "@/lib/storage/avatars";
+import { createClient } from "@/lib/supabase/client";
 import type { User } from "@/lib/types/models";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useDebouncedCallback } from "use-debounce";
 
 interface ProfileEditFormProps {
@@ -49,6 +52,8 @@ interface ProfileEditFormProps {
 export function ProfileEditForm({ profile }: ProfileEditFormProps) {
   const router = useRouter();
   const [usernameAvailable, setUsernameAvailable] = useState<boolean | null>(null);
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // React Hook Form 초기화
   const form = useForm<UpdateProfileInput>({
@@ -57,13 +62,36 @@ export function ProfileEditForm({ profile }: ProfileEditFormProps) {
       username: profile.username || undefined,
       full_name: profile.full_name || undefined,
       avatar_url: profile.avatar_url || "",
-      website: profile.website || "",
       gender: (profile.gender as "male" | "female" | undefined) || undefined,
       age: profile.age != null ? String(profile.age) : undefined,
     },
   });
 
   const watchedUsername = form.watch("username");
+  const watchedAvatarUrl = form.watch("avatar_url");
+
+  // 아바타 파일 선택 시 즉시 Storage에 업로드하고, 성공하면 폼의 avatar_url을 공개 URL로
+  // 갱신한다 — 저장 버튼을 누를 때는 이미 완성된 URL 문자열만 넘기면 되므로
+  // updateProfileAction의 기존 저장 흐름은 그대로 재사용된다.
+  const handleAvatarFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+
+    setIsUploadingAvatar(true);
+    try {
+      const result = await uploadAvatar(createClient(), profile.id, file);
+      if (!result.success) {
+        showError(result.message);
+        return;
+      }
+      form.setValue("avatar_url", result.publicUrl, { shouldDirty: true });
+    } catch {
+      showError("아바타 업로드 중 오류가 발생했습니다.");
+    } finally {
+      setIsUploadingAvatar(false);
+    }
+  };
 
   // 닉네임 중복 확인 (300ms debounce)
   const checkUsername = useDebouncedCallback(async (username: string) => {
@@ -96,9 +124,6 @@ export function ProfileEditForm({ profile }: ProfileEditFormProps) {
       }
       if (data.avatar_url !== undefined) {
         formData.append("avatar_url", data.avatar_url);
-      }
-      if (data.website !== undefined) {
-        formData.append("website", data.website);
       }
       if (data.gender !== undefined) {
         formData.append("gender", data.gender);
@@ -222,37 +247,45 @@ export function ProfileEditForm({ profile }: ProfileEditFormProps) {
               )}
             />
 
-            {/* 아바타 URL */}
+            {/* 아바타 (파일 업로드) */}
             <FormField
               control={form.control}
               name="avatar_url"
-              render={({ field }) => (
+              render={() => (
                 <FormItem>
-                  <FormLabel>아바타 URL (선택)</FormLabel>
+                  <FormLabel>아바타 (선택)</FormLabel>
                   <FormControl>
-                    <Input
-                      placeholder="https://example.com/avatar.jpg"
-                      {...field}
-                      disabled={isSubmitting}
-                    />
+                    <div className="flex items-center gap-4">
+                      <Avatar className="h-16 w-16">
+                        <AvatarImage src={watchedAvatarUrl || undefined} alt="아바타 미리보기" />
+                        <AvatarFallback>{(profile.username ?? "?")[0]}</AvatarFallback>
+                      </Avatar>
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept={AVATAR_ALLOWED_MIME_TYPES.join(",")}
+                        className="hidden"
+                        onChange={handleAvatarFileChange}
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={isSubmitting || isUploadingAvatar}
+                        onClick={() => fileInputRef.current?.click()}
+                      >
+                        {isUploadingAvatar ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            업로드 중...
+                          </>
+                        ) : (
+                          "이미지 선택"
+                        )}
+                      </Button>
+                    </div>
                   </FormControl>
-                  <FormDescription>프로필 사진 URL을 입력하세요.</FormDescription>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            {/* 웹사이트 */}
-            <FormField
-              control={form.control}
-              name="website"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>웹사이트 (선택)</FormLabel>
-                  <FormControl>
-                    <Input placeholder="https://example.com" {...field} disabled={isSubmitting} />
-                  </FormControl>
-                  <FormDescription>개인 웹사이트 또는 블로그 URL</FormDescription>
+                  <FormDescription>내 PC에서 이미지 파일을 선택하세요 (최대 2MB).</FormDescription>
                   <FormMessage />
                 </FormItem>
               )}

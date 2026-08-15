@@ -871,6 +871,10 @@ export type Database = {
         Returns: number;
       };
       room_member_joined_at: { Args: { p_room_id: string }; Returns: string };
+      rooms_with_online_member: {
+        Args: { p_room_ids: string[]; p_threshold: string };
+        Returns: string[];
+      };
     };
     Enums: {
       [_ in never]: never;

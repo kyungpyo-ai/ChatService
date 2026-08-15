@@ -9,6 +9,10 @@ import { formatChatTime } from "@/lib/utils/date";
 import { getSignedChatImageUrls } from "@/lib/storage/chat-images";
 import type { ChatMessage } from "@/components/chat/chat-message-bubble";
 
+// 방채팅 목록 온라인 필터링용 임계값 — 하트비트 갱신 주기(60초, use-heartbeat.ts)와 맞물리도록
+// 1분으로 둔다. 검색 기능의 온라인 판단(lib/queries/users.ts, 2분)과는 별도 값이라 공유하지 않는다.
+const ROOM_ONLINE_THRESHOLD_MS = 60 * 1000;
+
 export interface RoomListItem {
   id: string;
   title: string;
@@ -53,8 +57,45 @@ interface RoomListRow {
 }
 
 /**
+ * 주어진 room_id들 중 "온라인 멤버가 한 명이라도 있는" room_id 집합을 조회한다.
+ * 온라인 여부는 방채팅 화면을 직접 보고 있는지가 아니라 사이트 전역 접속 여부
+ * (profiles.last_seen_at, use-heartbeat.ts)로 판단한다.
+ *
+ * room_members SELECT RLS("members can view their room roster")는 그 방의 멤버만 조회를
+ * 허용한다 — 방을 아직 참여하지 않고 둘러보는 사용자는 다른 방들의 room_members를 직접
+ * 조회할 수 없어, room_members 테이블을 직접 쿼리하면 항상 빈 결과가 나온다. is_room_member()와
+ * 동일하게 SECURITY DEFINER RPC(rooms_with_online_member)로 우회한다
+ * (supabase/migrations/20260815030000_create_rooms_with_online_member_function.sql).
+ */
+async function getRoomIdsWithOnlineMember(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  roomIds: string[]
+): Promise<Set<string>> {
+  if (roomIds.length === 0) {
+    return new Set();
+  }
+
+  const threshold = new Date(Date.now() - ROOM_ONLINE_THRESHOLD_MS).toISOString();
+
+  const { data, error } = await supabase.rpc("rooms_with_online_member", {
+    p_room_ids: roomIds,
+    p_threshold: threshold,
+  });
+
+  if (error || !data) {
+    return new Set();
+  }
+
+  return new Set(data);
+}
+
+/**
  * 방 목록 조회 — 방장 프로필(닉네임/성별/나이)과 참여자 수를 함께 조회한다 (ROOM-01, ROOM-08, ROOM-09).
  * 비로그인(게스트) 사용자도 호출 가능 (RLS: rooms select 정책이 anon 허용).
+ *
+ * 온라인 멤버가 한 명도 없는 방은 목록에서 제외한다 — 방이 많아질수록 참여자가 아무도
+ * 접속하지 않은 "죽은 방"이 목록을 뒤덮어 실제로 대화 중인 방을 찾기 어려워지기 때문이다.
+ * "내가 참여 중인 방"(getMyRoomList)에는 이 필터를 적용하지 않는다.
  */
 export async function getRoomList(): Promise<RoomListItem[]> {
   const supabase = await createClient();
@@ -70,8 +111,14 @@ export async function getRoomList(): Promise<RoomListItem[]> {
     return [];
   }
 
-  return (data as unknown as RoomListRow[])
-    .filter((room) => room.owner !== null)
+  const rooms = (data as unknown as RoomListRow[]).filter((room) => room.owner !== null);
+  const onlineRoomIds = await getRoomIdsWithOnlineMember(
+    supabase,
+    rooms.map((room) => room.id)
+  );
+
+  return rooms
+    .filter((room) => onlineRoomIds.has(room.id))
     .map((room) => ({
       id: room.id,
       title: room.title,

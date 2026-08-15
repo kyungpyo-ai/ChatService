@@ -62,7 +62,6 @@ export const updateProfileSchema = z.object({
     .optional(),
   full_name: z.string().optional(),
   avatar_url: z.string().url("올바른 URL을 입력하세요").optional().or(z.literal("")),
-  website: z.string().url("올바른 URL을 입력하세요").optional().or(z.literal("")),
   gender: genderSchema,
   age: ageSchema,
 });

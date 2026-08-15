@@ -164,33 +164,34 @@ export async function joinRoomAction(
  *
  * leave_room() DB 함수(SECURITY DEFINER)가 처리한다. 방장이 나가면 방 자체가 삭제되고,
  * 일반 참여자면 room_members 행만 삭제된다(§ROADMAP Phase 4).
- * 폼이 아닌 클릭 핸들러에서 직접 호출되므로 redirect()는 쓰지 않고, 성공 여부만 반환해
- * 클라이언트에서 라우팅을 처리하게 한다.
+ *
+ * 성공 시 반드시 redirect()로 이동한다 — 클라이언트에서 router.push()로 라우팅했을 때,
+ * Next.js가 Server Action 호출 직후 "이 액션이 호출된 현재 페이지"를 자동으로 새로고침하는
+ * 시점이 router.push보다 먼저 온다. 이 새로고침이 방 상세 페이지(app/(main)/rooms/[roomId]/
+ * page.tsx)의 "공개방 즉시입장" 로직(비멤버면 join_room 자동 호출)을 다시 실행시켜, 나가기
+ * 직후 곧바로 재입장되는 버그가 있었다(§실사용 확인). redirect()는 현재 라우트를 다시
+ * 렌더링하지 않고 곧장 새 경로로 이동시키므로 이 문제를 원천적으로 피한다.
  */
 export async function leaveRoomAction(roomId: string): Promise<ActionResult> {
-  try {
-    const supabase = await createClient();
+  const supabase = await createClient();
 
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
 
-    if (authError || !user) {
-      return { success: false, message: "로그인이 필요합니다." };
-    }
-
-    const { error: rpcError } = await supabase.rpc("leave_room", { p_room_id: roomId });
-
-    if (rpcError) {
-      return { success: false, message: "방 나가기에 실패했습니다." };
-    }
-
-    revalidatePath("/rooms");
-    return { success: true, message: "" };
-  } catch {
-    return { success: false, message: "방 나가기 중 오류가 발생했습니다." };
+  if (authError || !user) {
+    return { success: false, message: "로그인이 필요합니다." };
   }
+
+  const { error: rpcError } = await supabase.rpc("leave_room", { p_room_id: roomId });
+
+  if (rpcError) {
+    return { success: false, message: "방 나가기에 실패했습니다." };
+  }
+
+  revalidatePath("/rooms");
+  redirect("/rooms");
 }
 
 /**

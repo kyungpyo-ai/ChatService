@@ -25,6 +25,12 @@ export function RoomCard({ room, currentUserId }: RoomCardProps) {
   return (
     <Link
       href={`/rooms/${room.id}`}
+      // app/(main)/rooms/[roomId]/page.tsx는 비참여자가 접근하면 렌더링 중에 join_room()을
+      // 호출해 자동 입장시킨다 — prefetch가 켜져 있으면 카드가 뷰포트에 보이기만 해도(클릭
+      // 없이) 이 렌더링이 미리 실행되어 조용히 재입장되는 버그가 있었다(예: 방 나가기 직후
+      // 목록으로 돌아오면 그 방 카드가 다시 보이면서 즉시 재입장됨). prefetch를 꺼서 실제
+      // 클릭 시에만 입장이 일어나게 한다.
+      prefetch={false}
       className={
         isMine
           ? "bg-surface hover:bg-surface-muted border-brand relative block rounded-(--radius-card) border-2 p-4 shadow-(--shadow-card)"

@@ -93,12 +93,10 @@ export function RoomChatView({
 
   const handleLeave = async () => {
     setLeaveDialogOpen(false);
+    // 성공 시 leaveRoomAction 내부에서 redirect()로 이동하므로(재입장 버그 방지, §app/actions/rooms.ts)
+    // 여기 도달하는 건 실패한 경우뿐이다.
     const result = await leaveRoomAction(roomId);
-    if (!result.success) {
-      showError(result.message);
-      return;
-    }
-    router.push("/rooms");
+    showError(result.message);
   };
 
   return (
