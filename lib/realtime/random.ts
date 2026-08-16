@@ -33,9 +33,8 @@ async function recoverFromStaleSession(message: string) {
 // 완전히 별개다. "채팅 중"과 "지금 이 탭을 보고 있음"은 다른 개념이므로 탭 가시성과 무관하게 계속
 // 돈다(§DEVELOPMENT_PLAN 5.5).
 const SESSION_HEARTBEAT_INTERVAL_MS = 10000;
-// 상대 하트비트가 이 시간 넘게 갱신되지 않으면 "나갔다"고 판단한다(폴링 간격의 2.5배 — 한 번
-// 놓쳐도 오탐하지 않을 여유).
-const PARTNER_STALE_MS = 25000;
+// 상대가 25초(폴링 간격의 2.5배) 넘게 조용하면 "나갔다"고 판단한다 — 이 임계값은 이제
+// heartbeat_random_session() DB 함수 안에서 서버 시각 기준으로 적용된다(§위 주석 참고).
 
 interface MessageRow {
   id: string;
@@ -83,20 +82,27 @@ interface RandomSessionLiveState {
  * "SUBSCRIBED"를 받지만 서버 측 등록이 조용히 실패하는 것으로 확인됐다(Phase 3~4에서 격리 재현).
  * 그래서 메시지 채널(INSERT)과 세션 종료 채널(UPDATE)을 분리해 각각 단일 바인딩만 건다.
  *
- * 상대방이 "종료" 버튼 없이 그냥 사라진 경우(탭을 닫거나 네트워크가 끊김)는 postgres_changes로는
- * 감지할 수 없다 — DB가 바뀌지 않으니 이벤트 자체가 없다. 그래서 `random-session-${sessionId}`
- * Presence 채널에 양쪽이 join하고, 상대방의 `leave` 이벤트(소켓 연결 끊김을 서버가 감지해 보통
- * 수 초 내로 통지)를 감지하면 즉시 `partnerEnded`로 전환하고 `endRandomSessionAction()`을
- * 호출해 세션을 정리한다 — 되면 가장 빠른 경로지만, 실제 확인해보니 100% 신뢰할 수는 없다.
- * Supabase Realtime 서버가 접속자가 뜸하면 통째로 잠들었다 깨는 주기를 타면서 leave 이벤트
- * 자체가 서버에서 유실되는 경우가 있고(get_logs로 확인), 이건 클라이언트가 이미 받은 이벤트를
- * 재확인하는 방식으로는 못 잡는다.
+ * 상대방이 "종료" 버튼 없이 그냥 사라진 경우(탭을 닫거나 네트워크가 끊김)의 즉시 감지는 한때
+ * `random-session-${sessionId}` Presence 채널의 `leave` 이벤트로 처리했지만, 실사용 중 매칭
+ * 직후(채널 join/재연결 타이밍)에 상대가 멀쩡히 있는데도 가짜 `leave`가 발생해 대화가 시작하자마자
+ * "상대방이 대화를 종료했습니다"로 끊기는 오탐이 확인되어 제거했다(§2026-08-16). Presence 자체가
+ * 신뢰할 수 없다는 건 애초에 알고 있었다 — Supabase Realtime 서버가 접속자가 뜸하면 통째로
+ * 잠들었다 깨는 주기를 타면서 leave 이벤트가 유실되는 경우도 있었다(get_logs로 확인, 이쪽은
+ * "이벤트가 안 옴" 방향의 오탐이었다면 이번엔 "안 끊겼는데 옴" 방향). 두 방향 다 발생한다는 건
+ * 이 신호 자체를 즉시-반영 경로로 쓰기엔 근본적으로 부적합하다는 뜻이라, 아래 하트비트 폴링만
+ * 유일한 신뢰 소스로 남긴다.
  *
  * 그래서 진짜 신뢰 소스는 세션 전용 하트비트다 — `heartbeat_random_session()`을 10초마다 호출해
- * 본인 생존을 알리고, 같은 응답으로 상대의 마지막 하트비트 시각을 받는다. 25초(폴링 간격의
- * 2.5배) 넘게 갱신이 없으면 상대가 사라진 것으로 보고 직접 `endRandomSessionAction()`을 호출한다.
- * Presence leave는 "되면 좋은" 빠른 경로(보통 수 초)이고, 이 하트비트가 최악의 경우에도 약
- * 35초 안에는 확실히 잡아주는 하한선이다(§DEVELOPMENT_PLAN 5.5).
+ * 본인 생존을 알리고, 같은 응답으로 "상대가 25초(폴링 간격의 2.5배) 넘게 조용한가"를 이미
+ * 판단된 boolean(`partnerStale`)으로 받는다. 이 판단은 DB 서버 시각 기준으로 서버에서 끝내서
+ * 내려준다 — 처음에는 상대의 마지막 활동 시각(timestamptz)을 그대로 받아 클라이언트의
+ * Date.now()와 비교했는데, 매칭 직후 즉시 "상대가 종료함"으로 오판해 대화가 시작하자마자
+ * 끊기는 버그가 실사용 중 확인됐다(§2026-08-16, Supabase 로그로 end_random_session 호출
+ * 주체를 추적해 원인 특정 — 매번 실제로는 자기 자신의 판단 오류였다). 클라이언트 시계/파싱에
+ * 좌우되지 않도록 서버가 boolean만 내려주는 지금 방식으로 바꿨다. partnerStale이 true면 상대가
+ * 사라진 것으로 보고 직접 `endRandomSessionAction()`을 호출한다. Presence leave는 "되면
+ * 좋은" 빠른 경로(보통 수 초)였지만 위에서 제거했으므로, 이 하트비트가 최악의 경우에도 약
+ * 35초 안에는 확실히 잡아주는 유일한 하한선이다(§DEVELOPMENT_PLAN 5.5).
  *
  * 검색 화면 온라인 표시용 하트비트(profiles/guest_profiles.last_seen_at, 60초 간격)는 탭이
  * 백그라운드면 갱신을 멈추는데, 그건 재사용하지 않는다 — 채팅 중 잠깐 다른 탭을 봤다고 상대가
@@ -218,24 +224,7 @@ export function useRandomSessionMessages(
         )
         .subscribe();
 
-      // 상대방이 종료 버튼 없이 사라진 경우(탭 종료, 네트워크 끊김)의 즉시 감지 — presence
-      // leave 이벤트는 소켓 연결이 끊기면 서버가 수 초 내로 통지하므로 시간 추측이 필요 없다.
-      const presenceChannel = supabase.channel(`random-session-${sessionId}`, {
-        config: { presence: { key: currentUserId } },
-      });
-      presenceChannel
-        .on("presence", { event: "leave" }, ({ key }) => {
-          if (key === currentUserId) return;
-          setPartnerEnded(true);
-          void endRandomSessionAction(sessionId);
-        })
-        .subscribe((status) => {
-          if (status === "SUBSCRIBED") {
-            void presenceChannel.track({ online_at: new Date().toISOString() });
-          }
-        });
-
-      channels = [messageChannel, endedChannel, presenceChannel];
+      channels = [messageChannel, endedChannel];
     })();
 
     // 세션 전용 하트비트 폴링 — Presence leave 유실 시의 신뢰 가능한 하한선(위 주석 참고).
@@ -262,10 +251,7 @@ export function useRandomSessionMessages(
         return;
       }
 
-      if (
-        result.partnerLastSeenAt &&
-        Date.now() - new Date(result.partnerLastSeenAt).getTime() > PARTNER_STALE_MS
-      ) {
+      if (result.partnerStale) {
         setPartnerEnded(true);
         void endRandomSessionAction(sessionId);
       }

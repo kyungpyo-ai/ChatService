@@ -87,12 +87,16 @@ export async function cancelRandomQueueAction(): Promise<ActionResult> {
 export interface HeartbeatSessionResult {
   status: "active" | "ended" | null;
   endedBy: string | null;
-  partnerLastSeenAt: string | null;
+  partnerStale: boolean;
 }
 
 /**
  * 활성 세션 하트비트 — heartbeat_random_session() 호출로 본인의 last_seen 컬럼을 갱신하고,
- * 같은 왕복에서 세션 status와 상대방의 마지막 활동 시각을 함께 받는다(§DEVELOPMENT_PLAN 5.5).
+ * 같은 왕복에서 세션 status와 "상대가 25초 넘게 조용한가"(partner_stale)를 함께 받는다
+ * (§DEVELOPMENT_PLAN 5.5). 이 판단은 클라이언트 시계가 아니라 DB 서버 시각 기준으로 서버에서
+ * 끝내서 반환한다 — 예전에는 상대의 마지막 활동 시각(timestamptz)을 그대로 내려받아 클라이언트의
+ * Date.now()와 비교했는데, 매칭 직후 즉시 "상대가 종료함"으로 오판하는 버그가 실사용 중
+ * 확인됐다(§2026-08-16, Supabase 로그로 end_random_session 호출 주체를 추적해 원인 특정).
  *
  * 검색 화면 온라인 표시용 하트비트(app/actions/heartbeat.ts)와는 별개다 — 그쪽은 탭이
  * 백그라운드면 갱신을 멈추지만, 이건 "채팅방을 열어두고 있는지"만 봐야 하므로 탭 가시성과
@@ -110,21 +114,21 @@ export async function heartbeatRandomSessionAction(
     const { data, error } = (await supabase
       .rpc("heartbeat_random_session", { p_session_id: sessionId })
       .maybeSingle()) as {
-      data: { status: string; ended_by: string | null; partner_last_seen_at: string } | null;
+      data: { status: string; ended_by: string | null; partner_stale: boolean } | null;
       error: unknown;
     };
 
     if (error || !data) {
-      return { status: null, endedBy: null, partnerLastSeenAt: null };
+      return { status: null, endedBy: null, partnerStale: false };
     }
 
     return {
       status: data.status as "active" | "ended" | null,
       endedBy: data.ended_by,
-      partnerLastSeenAt: data.partner_last_seen_at,
+      partnerStale: data.partner_stale,
     };
   } catch {
-    return { status: null, endedBy: null, partnerLastSeenAt: null };
+    return { status: null, endedBy: null, partnerStale: false };
   }
 }
 
