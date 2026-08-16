@@ -11,6 +11,7 @@ import { RandomReportButton } from "@/components/random/report-button";
 import { EndSessionDialog } from "@/components/random/end-session-dialog";
 import { useRandomSessionMessages } from "@/lib/realtime/random";
 import { useSingleTabLock } from "@/lib/hooks/use-single-tab-lock";
+import { useHeartbeat } from "@/lib/hooks/use-heartbeat";
 import { endRandomSessionAction } from "@/app/actions/random";
 import { showError, showInfo } from "@/lib/utils/toast";
 
@@ -67,6 +68,10 @@ function RandomChatViewActive({
   initialEndedByMe,
 }: RandomChatViewProps) {
   const router = useRouter();
+  // (chat)/layout.tsx는 전역 하트비트를 마운트하지 않으므로(§2026-08-16, 방채팅은
+  // useRoomHeartbeat에 흡수됨) 랜덤채팅 화면은 여기서 직접 켠다 — 검색 화면 온라인 표시/DAU
+  // 집계가 랜덤채팅 중에도 계속 반영되어야 한다.
+  useHeartbeat();
   const [endedByMe, setEndedByMe] = useState(initialEndedByMe);
   const [reportOpen, setReportOpen] = useState(false);
   const [endDialogOpen, setEndDialogOpen] = useState(false);

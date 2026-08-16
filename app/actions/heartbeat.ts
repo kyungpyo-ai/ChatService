@@ -53,6 +53,12 @@ export async function updateLastSeenAction(): Promise<void> {
  * (§20260813000000). 방채팅은 게스트가 참여할 수 없으므로(§20260804145642) profiles만
  * 대상이며, 실제 그 방의 멤버인지는 DB 함수(`heartbeat_room_presence`)가 재검증한다.
  *
+ * 이 RPC는 같은 호출 안에서 `profiles.last_seen_at`과 DAU 집계(`record_daily_activity()`)까지
+ * 함께 처리한다(§2026-08-16) — 예전엔 (chat)/layout.tsx의 전역 `HeartbeatProvider`가 별도의
+ * 60초 타이머로 `last_seen_at`만 갱신하는 게 이 방 하트비트와 완전히 중복이었다. 방채팅
+ * 화면에서는 전역 하트비트를 더 이상 마운트하지 않으므로, 이 함수 하나가 온라인 표시/DAU/방
+ * 접속 상태를 전부 책임진다.
+ *
  * 언마운트 시 명시적으로 지우지 않는다 — 네트워크 순단/탭 강제종료 시 언마운트 이벤트가 안
  * 터지는 문제를 랜덤채팅 쪽에서 이미 겪었고(§20260805010000), 신선도 윈도우(2분)로 자연
  * 만료시키는 방식을 그대로 따른다.
