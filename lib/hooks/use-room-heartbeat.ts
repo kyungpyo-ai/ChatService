@@ -7,7 +7,9 @@ const ROOM_HEARTBEAT_INTERVAL_MS = 60 * 1000;
 
 /**
  * 방채팅 화면(`RoomChatView`)이 열려 있는 동안 `profiles.room_heartbeat_room_id`/
- * `room_heartbeat_at`을 주기적으로 갱신하는 훅.
+ * `room_heartbeat_at`을 주기적으로 갱신하는 훅. 같은 RPC가 `last_seen_at`/DAU 집계까지
+ * 함께 처리하므로(§app/actions/heartbeat.ts, 2026-08-16) 방채팅 화면에서는 이 훅 하나로
+ * 충분하고, 전역 하트비트(`useHeartbeat`)를 별도로 마운트하지 않는다.
  *
  * `lib/hooks/use-heartbeat.ts`(사이트 전역 접속자, 60초 주기/2분 신선도)와 동일한 패턴을
  * 재사용한다 — 방채팅 화면은 랜덤채팅 대기 화면처럼 촘촘한 주기(5초 폴링/15초 신선도)가
