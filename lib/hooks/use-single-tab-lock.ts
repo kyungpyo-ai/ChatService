@@ -22,6 +22,8 @@ export function useSingleTabLock(key: string): boolean | null {
 
   useEffect(() => {
     if (typeof navigator === "undefined" || !("locks" in navigator)) {
+      // Web Locks API 미지원 환경(구형 브라우저)에서는 잠금을 건너뛰고 즉시 leader로 취급한다
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setIsLeader(true);
       return;
     }

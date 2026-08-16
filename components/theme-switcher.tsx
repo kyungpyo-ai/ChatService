@@ -18,6 +18,8 @@ const ThemeSwitcher = () => {
 
   // useEffect only runs on the client, so now we can safely show the UI
   useEffect(() => {
+    // 서버/클라이언트 hydration 불일치를 피하기 위한 의도적인 마운트 감지 플래그
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setMounted(true);
   }, []);
 

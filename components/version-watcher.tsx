@@ -26,7 +26,10 @@ export function VersionWatcher({ initialVersion }: VersionWatcherProps) {
   const pathname = usePathname();
   const pathnameRef = useRef(pathname);
   const notifiedRef = useRef(false);
-  pathnameRef.current = pathname;
+
+  useEffect(() => {
+    pathnameRef.current = pathname;
+  }, [pathname]);
 
   useEffect(() => {
     const checkVersion = async () => {

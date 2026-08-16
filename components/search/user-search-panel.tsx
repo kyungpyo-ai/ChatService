@@ -33,6 +33,8 @@ export function UserSearchPanel({ currentUserId }: { currentUserId: string }) {
   const [selectedUser, setSelectedUser] = useState<SearchUserResult | null>(null);
 
   useEffect(() => {
+    // localStorage는 서버에서 읽을 수 없어 마운트 이후 클라이언트에서만 불러올 수 있다
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setRecentSearches(getRecentSearches());
   }, []);
 
