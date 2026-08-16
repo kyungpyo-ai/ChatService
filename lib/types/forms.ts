@@ -41,6 +41,9 @@ export type ActionResult<T = unknown> = {
   message: string;
   data?: T;
   errors?: Record<string, string[]>;
+  /** true면 요청자의 로그인 세션이 더 이상 유효한 계정을 가리키지 않는다는 뜻이다
+   * (§lib/utils/stale-session.ts) — 호출부는 로그아웃 처리 후 새로고침을 유도해야 한다. */
+  sessionExpired?: boolean;
 };
 
 /**

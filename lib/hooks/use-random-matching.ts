@@ -65,10 +65,21 @@ export function useRandomMatching(): UseRandomMatchingResult {
       setSessionId(matchedSessionId);
     };
 
+    const handleSessionExpired = async (message: string) => {
+      stopPolling();
+      setError(message);
+      await supabase.auth.signOut();
+      window.setTimeout(() => window.location.reload(), 1500);
+    };
+
     const attemptMatch = async () => {
       const result = await enterRandomQueueAction();
       if (cancelled) return;
       if (!result.success) {
+        if (result.sessionExpired) {
+          void handleSessionExpired(result.message);
+          return;
+        }
         setError(result.message);
         return;
       }
@@ -103,6 +114,10 @@ export function useRandomMatching(): UseRandomMatchingResult {
       if (cancelled) return;
 
       if (!result.success) {
+        if (result.sessionExpired) {
+          void handleSessionExpired(result.message);
+          return;
+        }
         setError(result.message);
         return;
       }

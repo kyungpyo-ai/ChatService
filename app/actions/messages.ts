@@ -13,9 +13,13 @@ import {
 } from "@/lib/storage/chat-images";
 import { checkRateLimit } from "@/lib/utils/rate-limit";
 import { getOlderRoomMessages } from "@/lib/queries/rooms";
+import { isStaleSessionError } from "@/lib/utils/stale-session";
 import type { ActionResult } from "@/lib/types/forms";
 import type { ChatMessage } from "@/components/chat/chat-message-bubble";
 import type { SupabaseClient } from "@supabase/supabase-js";
+
+const SESSION_EXPIRED_MESSAGE =
+  "로그인 세션이 만료되어 자동으로 로그아웃했어요. 새로고침 후 다시 시도해주세요.";
 
 /**
  * 방채팅 텍스트 메시지 전송
@@ -63,6 +67,10 @@ export async function sendRoomMessageAction(
     });
 
     if (insertError) {
+      if (isStaleSessionError(insertError)) {
+        await supabase.auth.signOut();
+        return { success: false, message: SESSION_EXPIRED_MESSAGE, sessionExpired: true };
+      }
       return { success: false, message: "메시지 전송에 실패했습니다." };
     }
 
@@ -140,6 +148,10 @@ export async function sendRandomMessageAction(
     });
 
     if (insertError) {
+      if (isStaleSessionError(insertError)) {
+        await supabase.auth.signOut();
+        return { success: false, message: SESSION_EXPIRED_MESSAGE, sessionExpired: true };
+      }
       return { success: false, message: "메시지 전송에 실패했습니다." };
     }
 
@@ -240,6 +252,10 @@ export async function sendRoomImageMessageAction(
 
     if (insertError) {
       await deleteUploadedChatImage(supabase, path);
+      if (isStaleSessionError(insertError)) {
+        await supabase.auth.signOut();
+        return { success: false, message: SESSION_EXPIRED_MESSAGE, sessionExpired: true };
+      }
       return { success: false, message: "이미지 메시지 전송에 실패했습니다." };
     }
 
@@ -292,6 +308,10 @@ export async function sendRandomImageMessageAction(
 
     if (insertError) {
       await deleteUploadedChatImage(supabase, path);
+      if (isStaleSessionError(insertError)) {
+        await supabase.auth.signOut();
+        return { success: false, message: SESSION_EXPIRED_MESSAGE, sessionExpired: true };
+      }
       return { success: false, message: "이미지 메시지 전송에 실패했습니다." };
     }
 

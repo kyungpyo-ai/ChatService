@@ -9,12 +9,17 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { isStaleSessionError } from "@/lib/utils/stale-session";
 import type { ActionResult } from "@/lib/types/forms";
+
+const SESSION_EXPIRED_MESSAGE =
+  "로그인 세션이 만료되어 자동으로 로그아웃했어요. 새로고침 후 다시 시도해주세요.";
 
 interface EnterQueueResult {
   success: boolean;
   message: string;
   sessionId: string | null;
+  sessionExpired?: boolean;
 }
 
 /**
@@ -41,6 +46,15 @@ export async function enterRandomQueueAction(): Promise<EnterQueueResult> {
     const { data: sessionId, error: rpcError } = await supabase.rpc("match_or_wait");
 
     if (rpcError) {
+      if (isStaleSessionError(rpcError)) {
+        await supabase.auth.signOut();
+        return {
+          success: false,
+          message: SESSION_EXPIRED_MESSAGE,
+          sessionId: null,
+          sessionExpired: true,
+        };
+      }
       return { success: false, message: "매칭 대기열 진입에 실패했습니다.", sessionId: null };
     }
 

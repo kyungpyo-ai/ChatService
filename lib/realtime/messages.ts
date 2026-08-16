@@ -26,6 +26,18 @@ import type { RoomMember } from "@/lib/queries/rooms";
 // 값(런타임) import로 가져오면 서버 전용 코드가 클라이언트 번들에 섞여 들어가 깨진다.
 const MESSAGES_PAGE_SIZE = 50;
 
+/**
+ * 서버 액션이 sessionExpired를 반환하면(§lib/utils/stale-session.ts) 이미 삭제된 계정의
+ * 세션이라는 뜻이다 — 클라이언트에서도 로그아웃 처리하고 잠시 후 새로고침해 새 세션을
+ * 받도록 유도한다.
+ */
+async function recoverFromStaleSession(message: string) {
+  showError(message);
+  const supabase = createClient();
+  await supabase.auth.signOut();
+  window.setTimeout(() => window.location.reload(), 1500);
+}
+
 interface MessageRow {
   id: string;
   sender_id: string;
@@ -355,7 +367,11 @@ export function useRoomMessages(
       if (!result.success) {
         pendingSendsRef.current = pendingSendsRef.current.filter((p) => p.tempId !== tempId);
         setMessages((prev) => prev.filter((m) => m.id !== tempId));
-        showError(result.message);
+        if (result.sessionExpired) {
+          void recoverFromStaleSession(result.message);
+        } else {
+          showError(result.message);
+        }
       }
     },
     [roomId, currentUserId]
@@ -389,11 +405,15 @@ export function useRoomMessages(
       };
       setMessages((prev) => [...prev, optimisticMessage]);
 
-      const rollback = (message: string) => {
+      const rollback = (message: string, sessionExpired?: boolean) => {
         pendingSendsRef.current = pendingSendsRef.current.filter((p) => p.tempId !== tempId);
         setMessages((prev) => prev.filter((m) => m.id !== tempId));
         URL.revokeObjectURL(previewUrl);
-        showError(message);
+        if (sessionExpired) {
+          void recoverFromStaleSession(message);
+        } else {
+          showError(message);
+        }
       };
 
       // 2. 업로드 URL 발급 — 이 시점에 비로소 Storage 경로(=content)를 알게 된다.
@@ -425,7 +445,7 @@ export function useRoomMessages(
       // 4. 메시지 INSERT — 성공하면 Realtime INSERT 이벤트가 위 pending 큐를 통해 reconcile한다.
       const result = await sendRoomImageMessageAction(roomId, ticket.data.path);
       if (!result.success) {
-        rollback(result.message);
+        rollback(result.message, result.sessionExpired);
       }
     },
     [roomId, currentUserId]

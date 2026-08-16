@@ -17,6 +17,18 @@ import { showError } from "@/lib/utils/toast";
 import { generateTempId } from "@/lib/utils/temp-id";
 import type { ChatMessage } from "@/components/chat/chat-message-bubble";
 
+/**
+ * 서버 액션이 sessionExpired를 반환하면(§lib/utils/stale-session.ts) 이미 삭제된 계정의
+ * 세션이라는 뜻이다 — 클라이언트에서도 로그아웃 처리하고 잠시 후 새로고침해 새 세션을
+ * 받도록 유도한다.
+ */
+async function recoverFromStaleSession(message: string) {
+  showError(message);
+  const supabase = createClient();
+  await supabase.auth.signOut();
+  window.setTimeout(() => window.location.reload(), 1500);
+}
+
 // 세션 전용 하트비트 폴링 간격 — 검색 화면의 온라인 표시 하트비트(60초, 탭 백그라운드 시 정지)와는
 // 완전히 별개다. "채팅 중"과 "지금 이 탭을 보고 있음"은 다른 개념이므로 탭 가시성과 무관하게 계속
 // 돈다(§DEVELOPMENT_PLAN 5.5).
@@ -298,7 +310,11 @@ export function useRandomSessionMessages(
       if (!result.success) {
         pendingSendsRef.current = pendingSendsRef.current.filter((p) => p.tempId !== tempId);
         setMessages((prev) => prev.filter((m) => m.id !== tempId));
-        showError(result.message);
+        if (result.sessionExpired) {
+          void recoverFromStaleSession(result.message);
+        } else {
+          showError(result.message);
+        }
       }
     },
     [sessionId, currentUserId]
@@ -330,11 +346,15 @@ export function useRandomSessionMessages(
       };
       setMessages((prev) => [...prev, optimisticMessage]);
 
-      const rollback = (message: string) => {
+      const rollback = (message: string, sessionExpired?: boolean) => {
         pendingSendsRef.current = pendingSendsRef.current.filter((p) => p.tempId !== tempId);
         setMessages((prev) => prev.filter((m) => m.id !== tempId));
         URL.revokeObjectURL(previewUrl);
-        showError(message);
+        if (sessionExpired) {
+          void recoverFromStaleSession(message);
+        } else {
+          showError(message);
+        }
       };
 
       // 2. 업로드 URL 발급 — 이 시점에 비로소 Storage 경로(=content)를 알게 된다.
@@ -366,7 +386,7 @@ export function useRandomSessionMessages(
       // 4. 메시지 INSERT — 성공하면 Realtime INSERT 이벤트가 위 pending 큐를 통해 reconcile한다.
       const result = await sendRandomImageMessageAction(sessionId, ticket.data.path);
       if (!result.success) {
-        rollback(result.message);
+        rollback(result.message, result.sessionExpired);
       }
     },
     [sessionId, currentUserId]
