@@ -8,6 +8,7 @@ import { UserSearchResultItem } from "@/components/search/user-search-result-ite
 import { UserProfileDialog } from "@/components/search/user-profile-dialog";
 import { searchUsersAction } from "@/app/actions/users";
 import { addRecentSearch, clearRecentSearches, getRecentSearches } from "@/lib/utils/recent-search";
+import { showError } from "@/lib/utils/toast";
 import type { SearchUserResult } from "@/lib/queries/users";
 
 const MIN_QUERY_LENGTH = 2;
@@ -44,12 +45,19 @@ export function UserSearchPanel({ currentUserId }: { currentUserId: string }) {
       return;
     }
 
-    const users = await searchUsersAction(trimmed);
-    setResults(users);
-    setIsLoading(false);
-    setHasSearched(true);
-    addRecentSearch(trimmed);
-    setRecentSearches(getRecentSearches());
+    try {
+      const users = await searchUsersAction(trimmed);
+      setResults(users);
+      setHasSearched(true);
+      addRecentSearch(trimmed);
+      setRecentSearches(getRecentSearches());
+    } catch {
+      showError("검색 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.");
+      setResults([]);
+      setHasSearched(false);
+    } finally {
+      setIsLoading(false);
+    }
   }, 300);
 
   const handleChange = useCallback(

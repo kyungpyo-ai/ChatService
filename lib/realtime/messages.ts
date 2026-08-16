@@ -319,6 +319,7 @@ export function useRoomMessages(
     setLoadingOlderMessages(false);
 
     if (!result.success || !result.data) {
+      showError(result.message || "이전 대화를 불러오지 못했습니다.");
       setHasMoreHistory(false);
       return;
     }
