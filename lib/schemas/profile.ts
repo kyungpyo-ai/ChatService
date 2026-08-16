@@ -60,7 +60,6 @@ export const updateProfileSchema = z.object({
     .regex(/^[a-zA-Z0-9가-힣_]+$/, "닉네임은 영문, 숫자, 한글, _만 사용 가능합니다")
     .refine((v) => !containsBannedWord(v), "닉네임에 부적절한 표현이 포함되어 있습니다")
     .optional(),
-  full_name: z.string().optional(),
   avatar_url: z.string().url("올바른 URL을 입력하세요").optional().or(z.literal("")),
   gender: genderSchema,
   age: ageSchema,

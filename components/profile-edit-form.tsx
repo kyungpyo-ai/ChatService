@@ -60,7 +60,6 @@ export function ProfileEditForm({ profile }: ProfileEditFormProps) {
     resolver: zodResolver(updateProfileSchema),
     defaultValues: {
       username: profile.username || undefined,
-      full_name: profile.full_name || undefined,
       avatar_url: profile.avatar_url || "",
       gender: (profile.gender as "male" | "female" | undefined) || undefined,
       age: profile.age != null ? String(profile.age) : undefined,
@@ -118,9 +117,6 @@ export function ProfileEditForm({ profile }: ProfileEditFormProps) {
 
       if (data.username) {
         formData.append("username", data.username);
-      }
-      if (data.full_name !== undefined) {
-        formData.append("full_name", data.full_name);
       }
       if (data.avatar_url !== undefined) {
         formData.append("avatar_url", data.avatar_url);
@@ -226,22 +222,6 @@ export function ProfileEditForm({ profile }: ProfileEditFormProps) {
                       <SelectItem value="female">여성</SelectItem>
                     </SelectContent>
                   </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            {/* 전체 이름 */}
-            <FormField
-              control={form.control}
-              name="full_name"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>전체 이름</FormLabel>
-                  <FormControl>
-                    <Input placeholder="예: 짐코딩" {...field} disabled={isSubmitting} />
-                  </FormControl>
-                  <FormDescription>프로필에 표시될 이름입니다.</FormDescription>
                   <FormMessage />
                 </FormItem>
               )}

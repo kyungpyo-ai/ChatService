@@ -126,7 +126,7 @@ export async function setupProfileAction(
  * 닉네임, 이름, 아바타를 업데이트할 수 있습니다.
  *
  * @param _prevState - 이전 상태 (React Hook Form용)
- * @param formData - 폼 데이터 (username?, full_name?, avatar_url?, gender?, age?)
+ * @param formData - 폼 데이터 (username?, avatar_url?, gender?, age?)
  * @returns ActionResult - 성공/실패 결과
  *
  * @example
@@ -134,7 +134,6 @@ export async function setupProfileAction(
  * const [state, formAction] = useActionState(updateProfileAction, initialState);
  * <form action={formAction}>
  *   <input name="username" />
- *   <input name="full_name" />
  *   <input name="avatar_url" />
  *   <input name="gender" />
  *   <input name="age" />
@@ -164,7 +163,6 @@ export async function updateProfileAction(
     // 2. 입력 데이터 검증
     const validatedFields = updateProfileSchema.safeParse({
       username: formData.get("username") || undefined,
-      full_name: formData.get("full_name") || undefined,
       avatar_url: formData.get("avatar_url") || undefined,
       gender: formData.get("gender") || undefined,
       age: formData.get("age") || undefined,
@@ -197,8 +195,6 @@ export async function updateProfileAction(
     // age는 스키마상 문자열이지만 DB 컬럼은 정수이므로 이 시점에만 숫자로 변환한다.
     const updateData: Omit<Partial<UpdateProfileInput>, "age"> & { age?: number } = {};
     if (validatedFields.data.username) updateData.username = validatedFields.data.username;
-    if (validatedFields.data.full_name !== undefined)
-      updateData.full_name = validatedFields.data.full_name;
     if (validatedFields.data.avatar_url !== undefined)
       updateData.avatar_url = validatedFields.data.avatar_url;
     if (validatedFields.data.gender !== undefined) updateData.gender = validatedFields.data.gender;
