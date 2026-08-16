@@ -318,6 +318,23 @@ export function useRandomSessionMessages(
     };
   }, [sessionId, currentUserId]);
 
+  // 탭을 닫거나 다른 페이지로 이동할 때 "종료" 버튼을 누른 것과 동일하게 즉시 세션을 끝내는
+  // best-effort 빠른 경로 — pagehide는 언로드 도중에도 sendBeacon 전송을 보장해주는 표준
+  // 이벤트다(beforeunload보다 모바일에서 더 안정적으로 발생함). event.persisted가 true면
+  // 실제 종료가 아니라 브라우저의 bfcache(뒤로가기 대비 캐시)로 넘어가는 것뿐이므로 무시한다.
+  // 이 신호가 실패해도(모바일 강제종료 등, §app/api/random/beacon-end/route.ts 주석 참고)
+  // 위 세션 하트비트가 최종 안전망으로 남아 있어 손해가 없다.
+  useEffect(() => {
+    const handlePageHide = (event: PageTransitionEvent) => {
+      if (event.persisted) return;
+      const payload = new Blob([JSON.stringify({ sessionId })], { type: "application/json" });
+      navigator.sendBeacon("/api/random/beacon-end", payload);
+    };
+
+    window.addEventListener("pagehide", handlePageHide);
+    return () => window.removeEventListener("pagehide", handlePageHide);
+  }, [sessionId]);
+
   const sendMessage = useCallback(
     async (content: string) => {
       const trimmed = content.trim();
