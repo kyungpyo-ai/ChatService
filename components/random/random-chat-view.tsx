@@ -8,6 +8,7 @@ import { ChatMessageBubble, type ChatMessage } from "@/components/chat/chat-mess
 import { ChatInputBar } from "@/components/chat/chat-input-bar";
 import { Button } from "@/components/ui/button";
 import { RandomReportButton } from "@/components/random/report-button";
+import { EndSessionDialog } from "@/components/random/end-session-dialog";
 import { useRandomSessionMessages } from "@/lib/realtime/random";
 import { useSingleTabLock } from "@/lib/hooks/use-single-tab-lock";
 import { endRandomSessionAction } from "@/app/actions/random";
@@ -68,6 +69,7 @@ function RandomChatViewActive({
   const router = useRouter();
   const [endedByMe, setEndedByMe] = useState(initialEndedByMe);
   const [reportOpen, setReportOpen] = useState(false);
+  const [endDialogOpen, setEndDialogOpen] = useState(false);
   const { messages, partnerEnded, sendMessage, sendImageMessage } = useRandomSessionMessages(
     sessionId,
     initialMessages,
@@ -103,6 +105,7 @@ function RandomChatViewActive({
   };
 
   const handleEnd = async () => {
+    setEndDialogOpen(false);
     const result = await endRandomSessionAction(sessionId);
     if (!result.success) {
       showError(result.message);
@@ -123,7 +126,7 @@ function RandomChatViewActive({
       <ChatHeader
         title="익명과의 대화"
         backHref="/"
-        onLeave={sessionEnded ? undefined : () => void handleEnd()}
+        onLeave={sessionEnded ? undefined : () => setEndDialogOpen(true)}
         leaveLabel="종료"
         onReport={() => setReportOpen(true)}
       />
@@ -170,6 +173,11 @@ function RandomChatViewActive({
         <ChatInputBar onSend={handleSend} onSendImage={handleSendImage} />
       )}
       <RandomReportButton sessionId={sessionId} open={reportOpen} onOpenChange={setReportOpen} />
+      <EndSessionDialog
+        open={endDialogOpen}
+        onOpenChange={setEndDialogOpen}
+        onConfirm={() => void handleEnd()}
+      />
     </div>
   );
 }
