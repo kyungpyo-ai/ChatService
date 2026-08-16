@@ -153,8 +153,8 @@ export function RoomChatView({
   };
 
   return (
-    <div className="flex h-screen">
-      <div className="flex h-screen min-w-0 flex-1 flex-col overflow-hidden">
+    <div className="flex h-dvh">
+      <div className="flex h-dvh min-w-0 flex-1 flex-col overflow-hidden">
         <ChatHeader
           title={title}
           backHref="/rooms"
