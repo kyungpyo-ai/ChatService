@@ -2,11 +2,13 @@ import type { Metadata } from "next";
 import { Geist } from "next/font/google";
 import { ThemeProvider } from "next-themes";
 import { Toaster } from "@/components/ui/sonner";
+import { VersionWatcher } from "@/components/version-watcher";
+import { getBuildVersion } from "@/lib/utils/build-version";
 import "./globals.css";
 
-const defaultUrl = process.env.VERCEL_URL
-  ? `https://${process.env.VERCEL_URL}`
-  : "http://localhost:3000";
+const defaultUrl =
+  process.env.NEXT_PUBLIC_SITE_URL ||
+  (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000");
 
 export const metadata: Metadata = {
   metadataBase: new URL(defaultUrl),
@@ -37,6 +39,7 @@ export default function RootLayout({
         >
           {children}
           <Toaster />
+          <VersionWatcher initialVersion={getBuildVersion()} />
         </ThemeProvider>
       </body>
     </html>
