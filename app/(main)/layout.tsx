@@ -25,7 +25,10 @@ export default async function MainLayout({ children }: { children: React.ReactNo
     redirect("/auth/setup-profile");
   }
 
-  const isLoggedIn = Boolean(user);
+  // 랜덤채팅에서 발급되는 익명(guest) 세션은 auth.users에는 존재하지만 profiles가 아닌
+  // guest_profiles에 저장된다(§20260804145603) — user만으로 판단하면 랜덤채팅을 한 번이라도
+  // 쓴 브라우저가 이후 모든 페이지에서 "로그인됨(닉네임 없음)"으로 잘못 표시된다.
+  const isLoggedIn = Boolean(profile);
 
   return (
     <div className="bg-surface-muted min-h-screen">

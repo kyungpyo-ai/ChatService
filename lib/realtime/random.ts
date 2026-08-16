@@ -83,14 +83,15 @@ interface RandomSessionLiveState {
  * "SUBSCRIBED"를 받지만 서버 측 등록이 조용히 실패하는 것으로 확인됐다(Phase 3~4에서 격리 재현).
  * 그래서 메시지 채널(INSERT)과 세션 종료 채널(UPDATE)을 분리해 각각 단일 바인딩만 건다.
  *
- * 상대방이 "종료" 버튼 없이 그냥 사라진 경우(탭을 닫거나 네트워크가 끊김)는 postgres_changes로는
- * 감지할 수 없다 — DB가 바뀌지 않으니 이벤트 자체가 없다. 그래서 `random-session-${sessionId}`
- * Presence 채널에 양쪽이 join하고, 상대방의 `leave` 이벤트(소켓 연결 끊김을 서버가 감지해 보통
- * 수 초 내로 통지)를 감지하면 즉시 `partnerEnded`로 전환하고 `endRandomSessionAction()`을
- * 호출해 세션을 정리한다 — 되면 가장 빠른 경로지만, 실제 확인해보니 100% 신뢰할 수는 없다.
- * Supabase Realtime 서버가 접속자가 뜸하면 통째로 잠들었다 깨는 주기를 타면서 leave 이벤트
- * 자체가 서버에서 유실되는 경우가 있고(get_logs로 확인), 이건 클라이언트가 이미 받은 이벤트를
- * 재확인하는 방식으로는 못 잡는다.
+ * 상대방이 "종료" 버튼 없이 그냥 사라진 경우(탭을 닫거나 네트워크가 끊김)의 즉시 감지는 한때
+ * `random-session-${sessionId}` Presence 채널의 `leave` 이벤트로 처리했지만, 실사용 중 매칭
+ * 직후(채널 join/재연결 타이밍)에 상대가 멀쩡히 있는데도 가짜 `leave`가 발생해 대화가 시작하자마자
+ * "상대방이 대화를 종료했습니다"로 끊기는 오탐이 확인되어 제거했다(§2026-08-16). Presence 자체가
+ * 신뢰할 수 없다는 건 애초에 알고 있었다 — Supabase Realtime 서버가 접속자가 뜸하면 통째로
+ * 잠들었다 깨는 주기를 타면서 leave 이벤트가 유실되는 경우도 있었다(get_logs로 확인, 이쪽은
+ * "이벤트가 안 옴" 방향의 오탐이었다면 이번엔 "안 끊겼는데 옴" 방향). 두 방향 다 발생한다는 건
+ * 이 신호 자체를 즉시-반영 경로로 쓰기엔 근본적으로 부적합하다는 뜻이라, 아래 하트비트 폴링만
+ * 유일한 신뢰 소스로 남긴다.
  *
  * 그래서 진짜 신뢰 소스는 세션 전용 하트비트다 — `heartbeat_random_session()`을 10초마다 호출해
  * 본인 생존을 알리고, 같은 응답으로 상대의 마지막 하트비트 시각을 받는다. 25초(폴링 간격의
@@ -218,24 +219,7 @@ export function useRandomSessionMessages(
         )
         .subscribe();
 
-      // 상대방이 종료 버튼 없이 사라진 경우(탭 종료, 네트워크 끊김)의 즉시 감지 — presence
-      // leave 이벤트는 소켓 연결이 끊기면 서버가 수 초 내로 통지하므로 시간 추측이 필요 없다.
-      const presenceChannel = supabase.channel(`random-session-${sessionId}`, {
-        config: { presence: { key: currentUserId } },
-      });
-      presenceChannel
-        .on("presence", { event: "leave" }, ({ key }) => {
-          if (key === currentUserId) return;
-          setPartnerEnded(true);
-          void endRandomSessionAction(sessionId);
-        })
-        .subscribe((status) => {
-          if (status === "SUBSCRIBED") {
-            void presenceChannel.track({ online_at: new Date().toISOString() });
-          }
-        });
-
-      channels = [messageChannel, endedChannel, presenceChannel];
+      channels = [messageChannel, endedChannel];
     })();
 
     // 세션 전용 하트비트 폴링 — Presence leave 유실 시의 신뢰 가능한 하한선(위 주석 참고).
