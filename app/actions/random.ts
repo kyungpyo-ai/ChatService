@@ -92,7 +92,7 @@ export interface HeartbeatSessionResult {
 
 /**
  * 활성 세션 하트비트 — heartbeat_random_session() 호출로 본인의 last_seen 컬럼을 갱신하고,
- * 같은 왕복에서 세션 status와 "상대가 25초 넘게 조용한가"(partner_stale)를 함께 받는다
+ * 같은 왕복에서 세션 status와 "상대가 지정한 초 이상 조용한가"(partner_stale)를 함께 받는다
  * (§DEVELOPMENT_PLAN 5.5). 이 판단은 클라이언트 시계가 아니라 DB 서버 시각 기준으로 서버에서
  * 끝내서 반환한다 — 예전에는 상대의 마지막 활동 시각(timestamptz)을 그대로 내려받아 클라이언트의
  * Date.now()와 비교했는데, 매칭 직후 즉시 "상대가 종료함"으로 오판하는 버그가 실사용 중
@@ -104,15 +104,20 @@ export interface HeartbeatSessionResult {
  *
  * 세션이 없거나(row 자체가 아카이브돼 삭제됨) 본인이 참여자가 아니면 status가 null로 온다 —
  * 두 경우 모두 클라이언트에서는 "더 이상 유효하지 않음"으로 동일하게 처리하면 된다.
+ *
+ * `staleSeconds`(기본 12초)는 "상대가 몇 초 넘게 조용해야 나간 것으로 볼지"의 기준을 호출
+ * 시점에 선택할 수 있게 한다 — 정기 5초 폴링에서는 기본값(12초)을 그대로 쓰고, Presence
+ * `leave` 신호를 받은 뒤 재검증할 때만 더 짧은 값을 넘겨 빠르게 확정한다(§lib/realtime/random.ts).
  */
 export async function heartbeatRandomSessionAction(
-  sessionId: string
+  sessionId: string,
+  staleSeconds = 12
 ): Promise<HeartbeatSessionResult> {
   try {
     const supabase = await createClient();
 
     const { data, error } = (await supabase
-      .rpc("heartbeat_random_session", { p_session_id: sessionId })
+      .rpc("heartbeat_random_session", { p_session_id: sessionId, p_stale_seconds: staleSeconds })
       .maybeSingle()) as {
       data: { status: string; ended_by: string | null; partner_stale: boolean } | null;
       error: unknown;

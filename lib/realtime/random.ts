@@ -31,10 +31,19 @@ async function recoverFromStaleSession(message: string) {
 
 // 세션 전용 하트비트 폴링 간격 — 검색 화면의 온라인 표시 하트비트(60초, 탭 백그라운드 시 정지)와는
 // 완전히 별개다. "채팅 중"과 "지금 이 탭을 보고 있음"은 다른 개념이므로 탭 가시성과 무관하게 계속
-// 돈다(§DEVELOPMENT_PLAN 5.5).
-const SESSION_HEARTBEAT_INTERVAL_MS = 10000;
-// 상대가 25초(폴링 간격의 2.5배) 넘게 조용하면 "나갔다"고 판단한다 — 이 임계값은 이제
+// 돈다(§DEVELOPMENT_PLAN 5.5). Presence/sendBeacon 빠른 경로가 실사용 중 기대만큼 안 빨라서
+// (§2026-08-16 — sendBeacon이 실제로 서버에 도착하지 않는 경우가 재현됨, 방채팅에서 이미 겪은
+// 것과 같은 종류의 불안정성), 이 정기 폴링 자체의 주기/임계값을 절반으로 좁혀 최악의 경우도
+// 기존 35초에서 약 17초로 줄였다 — 그만큼 요청 빈도는 2배가 되지만, 현재 트래픽 규모에서는
+// 감수할 만하다고 판단.
+const SESSION_HEARTBEAT_INTERVAL_MS = 5000;
+// 상대가 12초(폴링 간격의 2.4배) 넘게 조용하면 "나갔다"고 판단한다 — 이 임계값은
 // heartbeat_random_session() DB 함수 안에서 서버 시각 기준으로 적용된다(§위 주석 참고).
+const ROUTINE_STALE_SECONDS = 12;
+// Presence leave 재검증 전용 — 상대의 정상 하트비트 주기(5초) 한 번은 지켜본 뒤 판단하도록
+// 확인 대기 시간과 재검증 임계값을 정기 폴링(12초)보다 짧게 잡는다.
+const PRESENCE_LEAVE_CONFIRM_DELAY_MS = 5000;
+const PRESENCE_LEAVE_STALE_SECONDS = 5;
 
 interface MessageRow {
   id: string;
@@ -82,27 +91,33 @@ interface RandomSessionLiveState {
  * "SUBSCRIBED"를 받지만 서버 측 등록이 조용히 실패하는 것으로 확인됐다(Phase 3~4에서 격리 재현).
  * 그래서 메시지 채널(INSERT)과 세션 종료 채널(UPDATE)을 분리해 각각 단일 바인딩만 건다.
  *
- * 상대방이 "종료" 버튼 없이 그냥 사라진 경우(탭을 닫거나 네트워크가 끊김)의 즉시 감지는 한때
- * `random-session-${sessionId}` Presence 채널의 `leave` 이벤트로 처리했지만, 실사용 중 매칭
- * 직후(채널 join/재연결 타이밍)에 상대가 멀쩡히 있는데도 가짜 `leave`가 발생해 대화가 시작하자마자
- * "상대방이 대화를 종료했습니다"로 끊기는 오탐이 확인되어 제거했다(§2026-08-16). Presence 자체가
- * 신뢰할 수 없다는 건 애초에 알고 있었다 — Supabase Realtime 서버가 접속자가 뜸하면 통째로
- * 잠들었다 깨는 주기를 타면서 leave 이벤트가 유실되는 경우도 있었다(get_logs로 확인, 이쪽은
- * "이벤트가 안 옴" 방향의 오탐이었다면 이번엔 "안 끊겼는데 옴" 방향). 두 방향 다 발생한다는 건
- * 이 신호 자체를 즉시-반영 경로로 쓰기엔 근본적으로 부적합하다는 뜻이라, 아래 하트비트 폴링만
- * 유일한 신뢰 소스로 남긴다.
+ * 상대방이 "종료" 버튼 없이 그냥 사라진 경우(탭을 닫거나 네트워크가 끊김)는 두 가지 신호를
+ * "힌트 + 재검증" 구조로 함께 쓴다(§2026-08-16, 최초엔 Presence leave만으로 즉시 종료했다가
+ * 매칭 직후 채널 join/재연결 타이밍에 상대가 멀쩡한데도 가짜 leave가 발생해 대화가 시작하자마자
+ * 끊기는 오탐을 실사용 중 겪은 뒤 이 구조로 바꿨다):
  *
- * 그래서 진짜 신뢰 소스는 세션 전용 하트비트다 — `heartbeat_random_session()`을 10초마다 호출해
- * 본인 생존을 알리고, 같은 응답으로 "상대가 25초(폴링 간격의 2.5배) 넘게 조용한가"를 이미
- * 판단된 boolean(`partnerStale`)으로 받는다. 이 판단은 DB 서버 시각 기준으로 서버에서 끝내서
- * 내려준다 — 처음에는 상대의 마지막 활동 시각(timestamptz)을 그대로 받아 클라이언트의
- * Date.now()와 비교했는데, 매칭 직후 즉시 "상대가 종료함"으로 오판해 대화가 시작하자마자
- * 끊기는 버그가 실사용 중 확인됐다(§2026-08-16, Supabase 로그로 end_random_session 호출
- * 주체를 추적해 원인 특정 — 매번 실제로는 자기 자신의 판단 오류였다). 클라이언트 시계/파싱에
- * 좌우되지 않도록 서버가 boolean만 내려주는 지금 방식으로 바꿨다. partnerStale이 true면 상대가
- * 사라진 것으로 보고 직접 `endRandomSessionAction()`을 호출한다. Presence leave는 "되면
- * 좋은" 빠른 경로(보통 수 초)였지만 위에서 제거했으므로, 이 하트비트가 최악의 경우에도 약
- * 35초 안에는 확실히 잡아주는 유일한 하한선이다(§DEVELOPMENT_PLAN 5.5).
+ * 1. **정기 하트비트(신뢰 소스)** — `heartbeat_random_session()`을 5초마다 호출해 본인
+ *    생존을 알리고, 같은 응답으로 "상대가 12초(폴링 간격의 2.4배) 넘게 조용한가"를 서버가 이미
+ *    판단한 boolean(`partnerStale`)으로 받는다. 이 판단은 클라이언트 시계가 아니라 DB 서버
+ *    시각 기준으로 서버에서 끝내서 내려준다 — 처음엔 상대의 마지막 활동 시각(timestamptz)을
+ *    그대로 받아 클라이언트의 Date.now()와 비교했는데, 이 방식 자체가 매칭 직후 즉시 오판하는
+ *    버그의 원인이었다(Supabase 로그로 end_random_session 호출 주체를 추적해 확인 — 매번
+ *    자기 자신의 판단 오류였다). partnerStale이 true면 상대가 사라진 것으로 보고 직접
+ *    `endRandomSessionAction()`을 호출한다. 최악의 경우에도 약 17초 안에는 확실히 잡아주는
+ *    하한선이다 — 원래는 10초/25초(최대 35초)였는데, Presence·sendBeacon 빠른 경로(아래 2번,
+ *    §pagehide 리스너)가 실사용 중 기대만큼 안 빨라서(서버 도착 자체가 안 되는 경우도 재현됨)
+ *    이 정기 폴링 자체를 절반으로 좁혔다(§2026-08-16).
+ * 2. **Presence leave(빠른 힌트, 단독 신뢰 불가)** — `random-session-${sessionId}` Presence
+ *    채널의 `leave` 이벤트는 소켓 연결이 끊기면 서버가 보통 수 초 내로 통지하지만, 그 자체로는
+ *    못 믿는다(매칭 직후 오탐 + Supabase Realtime 서버가 접속자가 뜸하면 잠들었다 깨는 주기를
+ *    타면서 이벤트가 유실되는 경우도 있었음, get_logs로 확인). 그래서 leave를 받아도 즉시
+ *    종료하지 않고, `PRESENCE_LEAVE_CONFIRM_DELAY_MS`(정기 하트비트 주기만큼)만 기다렸다가
+ *    더 짧은 임계값(`PRESENCE_LEAVE_STALE_SECONDS`)으로 `heartbeat_random_session()`을 한 번
+ *    더 호출해 재검증한다 — 그 사이 상대가 진짜 하트비트를 보냈으면 통과(가짜 신호였던 것),
+ *    여전히 조용하면 그때 종료한다. 대기 중에 상대의 Presence `join`(재연결)이 오면 재검증
+ *    자체를 취소한다. 실측해보니 Presence leave 자체의 도착이 예상보다 느려(Supabase Realtime
+ *    내부 하트비트가 기본 25초 간격) 이 경로의 속도 이득은 확실치 않지만, 오탐 없이 "가끔은
+ *    더 빠를 수도 있는" 보너스로 그대로 둔다.
  *
  * 검색 화면 온라인 표시용 하트비트(profiles/guest_profiles.last_seen_at, 60초 간격)는 탭이
  * 백그라운드면 갱신을 멈추는데, 그건 재사용하지 않는다 — 채팅 중 잠깐 다른 탭을 봤다고 상대가
@@ -121,6 +136,9 @@ export function useRandomSessionMessages(
   const [partnerEnded, setPartnerEnded] = useState(false);
   // 내가 보낸 메시지 중 아직 Realtime INSERT로 되돌아오지 않은 것들의 대기 큐(FIFO)
   const pendingSendsRef = useRef<PendingSend[]>([]);
+  // Presence leave 재검증 대기 타이머 — 진행 중인 재검증이 있으면 leave를 또 받아도 새로
+  // 걸지 않고, join(재연결)이 오면 취소한다(§useRandomSessionMessages 상단 주석 참고).
+  const suspicionTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     const supabase = createClient();
@@ -224,14 +242,42 @@ export function useRandomSessionMessages(
         )
         .subscribe();
 
-      channels = [messageChannel, endedChannel];
+      // 상대방이 "종료" 버튼 없이 사라진 경우의 빠른 힌트 — 단독으로는 못 믿으므로 즉시
+      // 종료하지 않고, leave를 받으면 suspicionTimeoutRef에 재검증 타이머만 건다(아래 참고).
+      // 재연결(join)이 그 안에 오면 재검증 자체를 취소한다.
+      const presenceChannel = supabase.channel(`random-session-${sessionId}`, {
+        config: { presence: { key: currentUserId } },
+      });
+      presenceChannel
+        .on("presence", { event: "leave" }, ({ key }) => {
+          if (key === currentUserId || cancelled) return;
+          if (suspicionTimeoutRef.current) return; // 이미 재검증 대기 중
+          suspicionTimeoutRef.current = setTimeout(() => {
+            suspicionTimeoutRef.current = null;
+            void checkPartnerHeartbeat(PRESENCE_LEAVE_STALE_SECONDS);
+          }, PRESENCE_LEAVE_CONFIRM_DELAY_MS);
+        })
+        .on("presence", { event: "join" }, ({ key }) => {
+          if (key === currentUserId) return;
+          if (suspicionTimeoutRef.current) {
+            clearTimeout(suspicionTimeoutRef.current);
+            suspicionTimeoutRef.current = null;
+          }
+        })
+        .subscribe((status) => {
+          if (status === "SUBSCRIBED") {
+            void presenceChannel.track({ online_at: new Date().toISOString() });
+          }
+        });
+
+      channels = [messageChannel, endedChannel, presenceChannel];
     })();
 
-    // 세션 전용 하트비트 폴링 — Presence leave 유실 시의 신뢰 가능한 하한선(위 주석 참고).
-    // mount 시 즉시 1회 호출해, 이미 상대가 오래 전에 멈춰있는 세션에 뒤늦게 들어온 경우도
-    // 첫 10초를 그냥 흘려보내지 않고 바로 확인한다.
-    const runHeartbeat = async () => {
-      const result = await heartbeatRandomSessionAction(sessionId);
+    // 세션 전용 하트비트 폴링 — Presence leave 오탐/유실 모두에 흔들리지 않는 신뢰 가능한
+    // 하한선(위 주석 참고). mount 시 즉시 1회 호출해, 이미 상대가 오래 전에 멈춰있는 세션에
+    // 뒤늦게 들어온 경우도 첫 5초를 그냥 흘려보내지 않고 바로 확인한다.
+    const checkPartnerHeartbeat = async (staleSeconds: number) => {
+      const result = await heartbeatRandomSessionAction(sessionId, staleSeconds);
       if (cancelled) return;
 
       if (result.status === "ended") {
@@ -257,12 +303,19 @@ export function useRandomSessionMessages(
       }
     };
 
-    void runHeartbeat();
-    const heartbeatTimer = setInterval(() => void runHeartbeat(), SESSION_HEARTBEAT_INTERVAL_MS);
+    void checkPartnerHeartbeat(ROUTINE_STALE_SECONDS);
+    const heartbeatTimer = setInterval(
+      () => void checkPartnerHeartbeat(ROUTINE_STALE_SECONDS),
+      SESSION_HEARTBEAT_INTERVAL_MS
+    );
 
     return () => {
       cancelled = true;
       clearInterval(heartbeatTimer);
+      if (suspicionTimeoutRef.current) {
+        clearTimeout(suspicionTimeoutRef.current);
+        suspicionTimeoutRef.current = null;
+      }
       channels.forEach((channel) => supabase.removeChannel(channel));
       // 언마운트 시점까지 reconcile되지 못한 이미지 낙관적 메시지의 blob URL을 정리한다.
       pendingSendsRef.current.forEach((pending) => {
@@ -272,6 +325,23 @@ export function useRandomSessionMessages(
       });
     };
   }, [sessionId, currentUserId]);
+
+  // 탭을 닫거나 다른 페이지로 이동할 때 "종료" 버튼을 누른 것과 동일하게 즉시 세션을 끝내는
+  // best-effort 빠른 경로 — pagehide는 언로드 도중에도 sendBeacon 전송을 보장해주는 표준
+  // 이벤트다(beforeunload보다 모바일에서 더 안정적으로 발생함). event.persisted가 true면
+  // 실제 종료가 아니라 브라우저의 bfcache(뒤로가기 대비 캐시)로 넘어가는 것뿐이므로 무시한다.
+  // 이 신호가 실패해도(모바일 강제종료 등, §app/api/random/beacon-end/route.ts 주석 참고)
+  // 위 세션 하트비트가 최종 안전망으로 남아 있어 손해가 없다.
+  useEffect(() => {
+    const handlePageHide = (event: PageTransitionEvent) => {
+      if (event.persisted) return;
+      const payload = new Blob([JSON.stringify({ sessionId })], { type: "application/json" });
+      navigator.sendBeacon("/api/random/beacon-end", payload);
+    };
+
+    window.addEventListener("pagehide", handlePageHide);
+    return () => window.removeEventListener("pagehide", handlePageHide);
+  }, [sessionId]);
 
   const sendMessage = useCallback(
     async (content: string) => {
