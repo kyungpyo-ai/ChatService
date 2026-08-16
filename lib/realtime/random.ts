@@ -31,15 +31,19 @@ async function recoverFromStaleSession(message: string) {
 
 // 세션 전용 하트비트 폴링 간격 — 검색 화면의 온라인 표시 하트비트(60초, 탭 백그라운드 시 정지)와는
 // 완전히 별개다. "채팅 중"과 "지금 이 탭을 보고 있음"은 다른 개념이므로 탭 가시성과 무관하게 계속
-// 돈다(§DEVELOPMENT_PLAN 5.5).
-const SESSION_HEARTBEAT_INTERVAL_MS = 10000;
-// 상대가 25초(폴링 간격의 2.5배) 넘게 조용하면 "나갔다"고 판단한다 — 이 임계값은
+// 돈다(§DEVELOPMENT_PLAN 5.5). Presence/sendBeacon 빠른 경로가 실사용 중 기대만큼 안 빨라서
+// (§2026-08-16 — sendBeacon이 실제로 서버에 도착하지 않는 경우가 재현됨, 방채팅에서 이미 겪은
+// 것과 같은 종류의 불안정성), 이 정기 폴링 자체의 주기/임계값을 절반으로 좁혀 최악의 경우도
+// 기존 35초에서 약 17초로 줄였다 — 그만큼 요청 빈도는 2배가 되지만, 현재 트래픽 규모에서는
+// 감수할 만하다고 판단.
+const SESSION_HEARTBEAT_INTERVAL_MS = 5000;
+// 상대가 12초(폴링 간격의 2.4배) 넘게 조용하면 "나갔다"고 판단한다 — 이 임계값은
 // heartbeat_random_session() DB 함수 안에서 서버 시각 기준으로 적용된다(§위 주석 참고).
-const ROUTINE_STALE_SECONDS = 25;
-// Presence leave 재검증 전용 — 상대의 정상 하트비트 주기(10초) 한 번은 지켜본 뒤 판단하도록
-// 확인 대기 시간과 재검증 임계값을 정기 폴링(25초)보다 훨씬 짧게 잡는다.
-const PRESENCE_LEAVE_CONFIRM_DELAY_MS = 10000;
-const PRESENCE_LEAVE_STALE_SECONDS = 8;
+const ROUTINE_STALE_SECONDS = 12;
+// Presence leave 재검증 전용 — 상대의 정상 하트비트 주기(5초) 한 번은 지켜본 뒤 판단하도록
+// 확인 대기 시간과 재검증 임계값을 정기 폴링(12초)보다 짧게 잡는다.
+const PRESENCE_LEAVE_CONFIRM_DELAY_MS = 5000;
+const PRESENCE_LEAVE_STALE_SECONDS = 5;
 
 interface MessageRow {
   id: string;
@@ -92,15 +96,17 @@ interface RandomSessionLiveState {
  * 매칭 직후 채널 join/재연결 타이밍에 상대가 멀쩡한데도 가짜 leave가 발생해 대화가 시작하자마자
  * 끊기는 오탐을 실사용 중 겪은 뒤 이 구조로 바꿨다):
  *
- * 1. **정기 하트비트(신뢰 소스, 느림)** — `heartbeat_random_session()`을 10초마다 호출해 본인
- *    생존을 알리고, 같은 응답으로 "상대가 25초(폴링 간격의 2.5배) 넘게 조용한가"를 서버가 이미
+ * 1. **정기 하트비트(신뢰 소스)** — `heartbeat_random_session()`을 5초마다 호출해 본인
+ *    생존을 알리고, 같은 응답으로 "상대가 12초(폴링 간격의 2.4배) 넘게 조용한가"를 서버가 이미
  *    판단한 boolean(`partnerStale`)으로 받는다. 이 판단은 클라이언트 시계가 아니라 DB 서버
  *    시각 기준으로 서버에서 끝내서 내려준다 — 처음엔 상대의 마지막 활동 시각(timestamptz)을
  *    그대로 받아 클라이언트의 Date.now()와 비교했는데, 이 방식 자체가 매칭 직후 즉시 오판하는
  *    버그의 원인이었다(Supabase 로그로 end_random_session 호출 주체를 추적해 확인 — 매번
  *    자기 자신의 판단 오류였다). partnerStale이 true면 상대가 사라진 것으로 보고 직접
- *    `endRandomSessionAction()`을 호출한다. 최악의 경우에도 약 35초 안에는 확실히 잡아주는
- *    하한선이다.
+ *    `endRandomSessionAction()`을 호출한다. 최악의 경우에도 약 17초 안에는 확실히 잡아주는
+ *    하한선이다 — 원래는 10초/25초(최대 35초)였는데, Presence·sendBeacon 빠른 경로(아래 2번,
+ *    §pagehide 리스너)가 실사용 중 기대만큼 안 빨라서(서버 도착 자체가 안 되는 경우도 재현됨)
+ *    이 정기 폴링 자체를 절반으로 좁혔다(§2026-08-16).
  * 2. **Presence leave(빠른 힌트, 단독 신뢰 불가)** — `random-session-${sessionId}` Presence
  *    채널의 `leave` 이벤트는 소켓 연결이 끊기면 서버가 보통 수 초 내로 통지하지만, 그 자체로는
  *    못 믿는다(매칭 직후 오탐 + Supabase Realtime 서버가 접속자가 뜸하면 잠들었다 깨는 주기를
@@ -109,7 +115,9 @@ interface RandomSessionLiveState {
  *    더 짧은 임계값(`PRESENCE_LEAVE_STALE_SECONDS`)으로 `heartbeat_random_session()`을 한 번
  *    더 호출해 재검증한다 — 그 사이 상대가 진짜 하트비트를 보냈으면 통과(가짜 신호였던 것),
  *    여전히 조용하면 그때 종료한다. 대기 중에 상대의 Presence `join`(재연결)이 오면 재검증
- *    자체를 취소한다. 이러면 오탐 없이 보통 10초 안팎으로 감지 속도를 끌어올릴 수 있다.
+ *    자체를 취소한다. 실측해보니 Presence leave 자체의 도착이 예상보다 느려(Supabase Realtime
+ *    내부 하트비트가 기본 25초 간격) 이 경로의 속도 이득은 확실치 않지만, 오탐 없이 "가끔은
+ *    더 빠를 수도 있는" 보너스로 그대로 둔다.
  *
  * 검색 화면 온라인 표시용 하트비트(profiles/guest_profiles.last_seen_at, 60초 간격)는 탭이
  * 백그라운드면 갱신을 멈추는데, 그건 재사용하지 않는다 — 채팅 중 잠깐 다른 탭을 봤다고 상대가
@@ -267,7 +275,7 @@ export function useRandomSessionMessages(
 
     // 세션 전용 하트비트 폴링 — Presence leave 오탐/유실 모두에 흔들리지 않는 신뢰 가능한
     // 하한선(위 주석 참고). mount 시 즉시 1회 호출해, 이미 상대가 오래 전에 멈춰있는 세션에
-    // 뒤늦게 들어온 경우도 첫 10초를 그냥 흘려보내지 않고 바로 확인한다.
+    // 뒤늦게 들어온 경우도 첫 5초를 그냥 흘려보내지 않고 바로 확인한다.
     const checkPartnerHeartbeat = async (staleSeconds: number) => {
       const result = await heartbeatRandomSessionAction(sessionId, staleSeconds);
       if (cancelled) return;
