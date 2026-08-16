@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ChatHeader } from "@/components/chat/chat-header";
 import { ChatMessageBubble, type ChatMessage } from "@/components/chat/chat-message-bubble";
@@ -8,6 +9,7 @@ import { ChatInputBar } from "@/components/chat/chat-input-bar";
 import { Button } from "@/components/ui/button";
 import { RandomReportButton } from "@/components/random/report-button";
 import { useRandomSessionMessages } from "@/lib/realtime/random";
+import { useSingleTabLock } from "@/lib/hooks/use-single-tab-lock";
 import { endRandomSessionAction } from "@/app/actions/random";
 import { showError, showInfo } from "@/lib/utils/toast";
 
@@ -20,10 +22,43 @@ interface RandomChatViewProps {
 }
 
 /**
- * 랜덤채팅 화면 — useRandomSessionMessages로 실시간 메시지·상대방 종료를 감지한다.
- * 대화가 끝나면(본인 종료 또는 상대방 종료) 입력창 대신 재매칭/홈으로 버튼을 노출한다(RND-05).
+ * 랜덤채팅 화면 진입점 — 같은 세션을 다른 탭에서 이미 열어두고 있으면(링크 복사, 탭 복제,
+ * 브라우저 세션 복원 등) 실시간 구독/하트비트를 아예 새로 띄우지 않고 안내 화면만 보여준다
+ * (§실사용 요청, 2026-08-16). useSingleTabLock이 null이면 아직 리더 여부를 판별 중인
+ * 아주 짧은 순간이라 빈 화면만 보여주고, 실제 채팅 로직(useRandomSessionMessages)은
+ * 리더로 확정된 탭에서만 마운트한다.
  */
-export function RandomChatView({
+export function RandomChatView(props: RandomChatViewProps) {
+  const isLeader = useSingleTabLock(props.sessionId);
+
+  if (isLeader === null) {
+    return <div className="bg-surface-muted h-dvh" />;
+  }
+
+  if (!isLeader) {
+    return <RandomChatBlockedView />;
+  }
+
+  return <RandomChatViewActive {...props} />;
+}
+
+function RandomChatBlockedView() {
+  return (
+    <div className="flex h-dvh flex-col items-center justify-center gap-4 p-6 text-center">
+      <p className="text-lg font-semibold">다른 탭에서 이미 대화 중입니다</p>
+      <p className="text-muted-foreground text-sm">
+        이 대화는 먼저 연 탭에서만 이어갈 수 있어요. 그 탭을 닫으면 여기서 이어서 쓸 수 있습니다.
+      </p>
+      <Link href="/">
+        <Button variant="outline" className="rounded-(--radius-card)">
+          홈으로
+        </Button>
+      </Link>
+    </div>
+  );
+}
+
+function RandomChatViewActive({
   sessionId,
   initialMessages,
   currentUserId,
