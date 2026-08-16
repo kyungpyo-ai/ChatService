@@ -17,6 +17,7 @@ import {
   type ChatImageMimeType,
 } from "@/lib/storage/chat-images";
 import { showError } from "@/lib/utils/toast";
+import { generateTempId } from "@/lib/utils/temp-id";
 import type { ChatMessage } from "@/components/chat/chat-message-bubble";
 import type { RoomMember } from "@/lib/queries/rooms";
 
@@ -333,7 +334,7 @@ export function useRoomMessages(
       const trimmed = content.trim();
       if (!trimmed) return;
 
-      const tempId = `temp-${crypto.randomUUID()}`;
+      const tempId = `temp-${generateTempId()}`;
       const self = participantsRef.current.find((p) => p.id === currentUserId);
 
       const optimisticMessage: ChatMessage = {
@@ -371,7 +372,7 @@ export function useRoomMessages(
         return;
       }
 
-      const tempId = `temp-${crypto.randomUUID()}`;
+      const tempId = `temp-${generateTempId()}`;
       const previewUrl = URL.createObjectURL(file);
       const self = participantsRef.current.find((p) => p.id === currentUserId);
 

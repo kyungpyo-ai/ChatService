@@ -14,6 +14,7 @@ import {
   type ChatImageMimeType,
 } from "@/lib/storage/chat-images";
 import { showError } from "@/lib/utils/toast";
+import { generateTempId } from "@/lib/utils/temp-id";
 import type { ChatMessage } from "@/components/chat/chat-message-bubble";
 
 // 세션 전용 하트비트 폴링 간격 — 검색 화면의 온라인 표시 하트비트(60초, 탭 백그라운드 시 정지)와는
@@ -279,7 +280,7 @@ export function useRandomSessionMessages(
       const trimmed = content.trim();
       if (!trimmed) return;
 
-      const tempId = `temp-${crypto.randomUUID()}`;
+      const tempId = `temp-${generateTempId()}`;
 
       const optimisticMessage: ChatMessage = {
         id: tempId,
@@ -315,7 +316,7 @@ export function useRandomSessionMessages(
         return;
       }
 
-      const tempId = `temp-${crypto.randomUUID()}`;
+      const tempId = `temp-${generateTempId()}`;
       const previewUrl = URL.createObjectURL(file);
 
       // 1. 경로를 알기 전이라도 로컬 blob URL로 즉시 미리보기를 붙인다(낙관적 UI).
