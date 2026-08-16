@@ -104,15 +104,20 @@ export interface HeartbeatSessionResult {
  *
  * 세션이 없거나(row 자체가 아카이브돼 삭제됨) 본인이 참여자가 아니면 status가 null로 온다 —
  * 두 경우 모두 클라이언트에서는 "더 이상 유효하지 않음"으로 동일하게 처리하면 된다.
+ *
+ * `staleSeconds`(기본 25초)는 "상대가 몇 초 넘게 조용해야 나간 것으로 볼지"의 기준을 호출
+ * 시점에 선택할 수 있게 한다 — 정기 10초 폴링에서는 기본값(25초)을 그대로 쓰고, Presence
+ * `leave` 신호를 받은 뒤 재검증할 때만 더 짧은 값을 넘겨 빠르게 확정한다(§lib/realtime/random.ts).
  */
 export async function heartbeatRandomSessionAction(
-  sessionId: string
+  sessionId: string,
+  staleSeconds = 25
 ): Promise<HeartbeatSessionResult> {
   try {
     const supabase = await createClient();
 
     const { data, error } = (await supabase
-      .rpc("heartbeat_random_session", { p_session_id: sessionId })
+      .rpc("heartbeat_random_session", { p_session_id: sessionId, p_stale_seconds: staleSeconds })
       .maybeSingle()) as {
       data: { status: string; ended_by: string | null; partner_stale: boolean } | null;
       error: unknown;
