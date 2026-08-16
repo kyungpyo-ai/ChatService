@@ -144,15 +144,17 @@ export function ChatMessageBubble({ message, variant }: ChatMessageBubbleProps) 
         </Avatar>
       )}
 
-      <div className={cn("flex max-w-[75%] flex-col gap-1", isMe && "items-end")}>
+      <div className={cn("flex max-w-[75%] min-w-0 flex-col gap-1", isMe && "items-end")}>
         {!isMe && <p className="text-muted-foreground px-1 text-xs">{message.senderName}</p>}
 
-        <div className={cn("flex items-end gap-1.5", isMe && "flex-row-reverse")}>
+        <div
+          className={cn("flex max-w-full min-w-0 items-end gap-1.5", isMe && "flex-row-reverse")}
+        >
           <div
             className={cn(
               message.imageUrl
                 ? "overflow-hidden rounded-(--radius-bubble)"
-                : "rounded-(--radius-bubble) px-3.5 py-2 text-sm break-words",
+                : "min-w-0 rounded-(--radius-bubble) px-3.5 py-2 text-sm break-words",
               !message.imageUrl &&
                 (isMe ? "bg-brand text-brand-foreground" : "bg-surface-muted text-foreground")
             )}

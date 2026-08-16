@@ -22,7 +22,7 @@ export function RandomMatchingClient() {
   const isLeader = useSingleTabLock(MATCHING_LOCK_KEY);
 
   if (isLeader === null) {
-    return <div className="bg-surface-muted min-h-screen" />;
+    return <div className="bg-surface-muted h-dvh" />;
   }
 
   if (!isLeader) {
@@ -34,7 +34,7 @@ export function RandomMatchingClient() {
 
 function RandomMatchingBlockedView() {
   return (
-    <div className="flex min-h-screen flex-col">
+    <div className="flex h-dvh flex-col">
       <ChatHeader title="랜덤채팅" backHref="/" />
       <div className="mx-auto flex w-full max-w-md flex-1 flex-col items-center justify-center gap-4 px-4 text-center">
         <p className="text-lg font-semibold">다른 탭에서 이미 대기 중입니다</p>
@@ -70,7 +70,7 @@ function RandomMatchingClientActive() {
   };
 
   return (
-    <div className="flex min-h-screen flex-col">
+    <div className="flex h-dvh flex-col">
       <ChatHeader title="랜덤채팅" backHref="/" />
 
       <div className="mx-auto flex w-full max-w-md flex-1 flex-col items-center px-4">
