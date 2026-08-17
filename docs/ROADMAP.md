@@ -1118,6 +1118,38 @@ no-ff merge, 프로덕션 배포 완료.
 - [x] 답장(reply) UX: 쪽지 상세 화면 안에서 "답장하기" 버튼 → 인라인 textarea로 결정.
       목록에서 바로 답장하는 UI는 만들지 않음(상세를 먼저 읽어야 원본 맥락을 알 수 있으므로).
 
+### 후속 개선 (2026-08-17, `feature/dm-realtime-badge` 브랜치)
+
+배포 후 실사용 확인 중 발견된 문제 2건을 반영했다.
+
+1. **안읽음 배지가 탭이 열려있는 동안엔 즉시 갱신되지 않던 문제** — 기존엔
+   `(main)/layout.tsx`가 렌더될 때만(페이지 이동/새로고침) `getDmUnreadCount()`를 다시
+   계산해 내려주는 구조라, 상대가 쪽지를 보내는 순간엔 반영되지 않고 다음 네비게이션까지
+   기다려야 했다. 방채팅/랜덤채팅과 동일한 `postgres_changes` INSERT 구독 패턴을 재사용해
+   `lib/realtime/dm-badge.ts`의 `useDmUnreadBadge(initialCount, userId)` 훅을 추가 — 서버가
+   내려준 초기값에서 시작해 내가 수신자인 새 쪽지 INSERT가 오면 즉시 +1 한다. 착수 전
+   `dm_notes`가 `supabase_realtime` publication에 등록돼 있는지 먼저 확인했는데, 예상대로
+   **등록돼 있지 않았다** — `messages`/`rooms`/`room_members`/`room_bans`에서 이미 여러 번
+   겪은 것과 같은 함정(§Phase 4 "참여자 실시간 반영 버그 3건")이라 `alter publication
+   supabase_realtime add table public.dm_notes`를 마이그레이션으로 추가해 해결했다. 읽음
+   처리/삭제로 카운트가 줄어드는 것은 기존 `revalidatePath("/", "layout")` 흐름과 자연스럽게
+   맞물린다 — 훅이 서버의 최신 `initialCount`를 매 렌더마다 감지해(useEffect가 아니라 렌더
+   중 state 조정 패턴, `react-hooks/set-state-in-effect` 회피) 그 값으로 되돌리므로, 실시간
+   증가분과 서버가 계산한 정확한 값이 어긋나지 않는다. `bottom-nav.tsx`/`sidebar-nav.tsx`가
+   둘 다 항상 마운트되어 있어(반응형 클래스로 숨김 처리만 됨) 각자 훅을 부르면 같은 Realtime
+   채널이 중복으로 열리므로(§CLAUDE.md "같은 화면에서 여러 하트비트가 겹치지 않는지 확인"과
+   같은 함정), `components/layout/main-nav.tsx` wrapper 하나가 훅을 한 번만 호출해 두
+   컴포넌트에 값을 내려주도록 구성했다.
+2. **내가 보낸 쪽지 상세에도 "답장하기" 버튼이 떠 있던 버그** — `dm-note-detail.tsx`가
+   `direction`(받음/보냄) 구분 없이 답장 UI를 항상 렌더링하고 있었다. `note.direction ===
+   "received"`일 때만 보이도록 고쳤고, 클라이언트 UI만 막고 서버가 안 막으면 우회 가능하므로
+   `send_dm_note()`의 `reply_to_id` 검증도 함께 강화했다 — 기존엔 "호출자가 원본 쪽지의
+   참여자(발신 또는 수신) 중 하나면" 통과시켜, 발신자 본인이 자기가 보낸 쪽지를 reply_to로
+   넘겨도 막지 못했다. "원본 쪽지의 수신자가 호출자 본인"인 경우만 허용하도록 바꿔, 답장은
+   항상 "내가 받은 쪽지에 대한 응답"이어야 한다는 제약을 DB 레벨에서도 강제한다.
+
+마이그레이션: `supabase/migrations/20260818000000_dm_notes_realtime_and_reply_recipient_check.sql`.
+
 **연관 PRD**: 없음(Phase 10에서 승격된 신규 범위 — PRD.md에 추가 필요)
 
 ---

@@ -1641,6 +1641,51 @@ Phase 7.7 작업 이전에 이미 닉네임을 설정해둔 기존 계정은 이
   `exactly_one_context`가 2-way로 원복된 것을 SQL로 직접 확인한 뒤 착수했다(롤백이 실제로
   적용됐는지 재검증).
 
+### 후속 개선 (2026-08-17, `feature/dm-realtime-badge` 브랜치)
+
+배포 후 실사용 확인 중 발견된 문제 2건.
+
+**① 안읽음 배지 실시간 갱신**
+
+- 착수 전 `select tablename from pg_publication_tables where pubname = 'supabase_realtime'`로
+  `dm_notes` 등록 여부를 먼저 확인 — 예상대로 **등록돼 있지 않았다**(`messages`/`rooms`/
+  `room_members`/`room_bans`와 동일하게 겪은 함정, §Phase 4). `alter publication
+  supabase_realtime add table public.dm_notes`로 해결.
+- `lib/realtime/dm-badge.ts`의 `useDmUnreadBadge(initialCount, userId)` — `postgres_changes`
+  INSERT를 `recipient_id=eq.{userId}` 필터로 구독(구독 전 `supabase.realtime.setAuth()` 필수,
+  RLS가 `auth.uid()`를 참조하므로 anon 기본 연결로는 이벤트 자체를 못 받는다). 이벤트가 오면
+  로컬 count를 +1만 한다 — "정확한 값으로 재동기화"는 서버가 다시 계산해 내려주는
+  `initialCount`가 바뀔 때(페이지 이동 등으로 레이아웃이 재검증될 때) 담당한다.
+- `initialCount` 변경 감지는 `useEffect` + `setState`가 아니라 **렌더 도중 state를 조정하는
+  React 공식 패턴**(`if (initialCount !== prevInitialCount) { setPrevInitialCount(...);
+  setCount(...) }`)으로 구현했다 — 처음엔 `useEffect(() => setCount(initialCount),
+  [initialCount])`로 짰다가 `eslint`(`react-hooks/set-state-in-effect`)가 "effect 안에서
+  setState하면 추가 렌더가 발생한다"고 에러를 내서 렌더 중 조정 패턴으로 바꿨다(캐스케이딩
+  렌더 한 번을 줄이는 이점도 있음).
+- `bottom-nav.tsx`(모바일)와 `sidebar-nav.tsx`(PC)는 반응형 클래스로 화면 크기에 따라
+  숨겨질 뿐 **둘 다 항상 DOM에 마운트**돼 있다 — 각자 안에서 훅을 부르면 같은 화면에서
+  Realtime 채널이 두 번 열리는 꼴이 된다(§CLAUDE.md "같은 화면에서 여러 하트비트가 겹치지
+  않는지 확인할 것"과 동일한 함정). `components/layout/main-nav.tsx`라는 client wrapper를
+  새로 만들어 훅을 한 번만 호출하고, 두 네비게이션 컴포넌트에 같은 `unreadDmCount` 값을
+  내려주도록 `(main)/layout.tsx`를 수정했다(기존에 레이아웃이 `SidebarNav`/`BottomNav`를
+  각각 직접 렌더하던 것을 `MainNav` 하나로 교체).
+
+**② 답장하기 버튼이 보낸 쪽지 상세에도 뜨던 버그**
+
+- `components/dm/dm-note-detail.tsx`가 `note.direction` 구분 없이 답장 UI를 항상 렌더링하고
+  있었다. `note.direction === "received"`일 때만 보이도록 수정.
+- 클라이언트 UI만 막으면 API를 직접 호출해 우회할 수 있으므로 `send_dm_note()`의
+  `p_reply_to_id` 검증도 함께 강화했다 — 기존 `v_uid in (n.sender_id, n.recipient_id)`는
+  발신자 본인이 자기가 보낸 쪽지를 `reply_to_id`로 넘겨도 통과시켰다. `n.recipient_id =
+  v_uid`(원본 쪽지의 수신자가 호출자 본인)로 좁혀, 답장이 "내가 받은 쪽지에 대한 응답"이라는
+  제약을 DB 레벨에서도 강제한다.
+
+마이그레이션: `supabase/migrations/20260818000000_dm_notes_realtime_and_reply_recipient_check.sql`.
+
+**검증**: `npm run typecheck`/`npm run lint`(기존 무관 경고 2건 제외) 통과, `npm run build`
+성공, `mcp__supabase__get_advisors(security)` ERROR 0건(WARN은 기존과 동일한 패턴), SQL로
+`dm_notes`가 `supabase_realtime` publication에 실제로 등록됐는지 재확인.
+
 ---
 
 *— End of DEVELOPMENT_PLAN (Phase 2, 11 상세, 이후 Phase는 착수 시 갱신) —*

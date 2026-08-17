@@ -3,8 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getUserProfile } from "@/lib/queries/profile";
 import { getDmUnreadCount } from "@/lib/queries/dm";
 import { AppHeader } from "@/components/layout/app-header";
-import { BottomNav } from "@/components/layout/bottom-nav";
-import { SidebarNav } from "@/components/layout/sidebar-nav";
+import { MainNav } from "@/components/layout/main-nav";
 import { HeartbeatProvider } from "@/components/layout/heartbeat-provider";
 
 /**
@@ -31,9 +30,11 @@ export default async function MainLayout({ children }: { children: React.ReactNo
   // 쓴 브라우저가 이후 모든 페이지에서 "로그인됨(닉네임 없음)"으로 잘못 표시된다.
   const isLoggedIn = Boolean(profile);
 
-  // 쪽지함 안읽음 배지(§ROADMAP Phase 11 재설계) — 실시간 구독이 아니라 이 레이아웃이
-  // 렌더될 때마다(페이지 이동·서버 액션의 revalidatePath("/", "layout") 이후) 다시 계산된다.
-  // 방채팅 수준의 즉시성이 필요 없다는 요구사항에 맞춘 최소 구현이다.
+  // 쪽지함 안읽음 배지(§ROADMAP Phase 11) — 이 레이아웃이 렌더될 때(페이지 이동·서버 액션의
+  // revalidatePath("/", "layout") 이후) 계산되는 "정확한" 초기값이다. 탭이 열려있는 동안 새
+  // 쪽지가 오는 즉시 반영되는 부분은 MainNav 안의 useDmUnreadBadge()가 Realtime으로 처리한다
+  // (§후속 개선 2026-08-17 — 기존에는 이 초기값만 있어서 새 쪽지가 와도 다음 네비게이션까지
+  // 배지가 안 올라가는 문제가 있었다).
   const unreadDmCount = isLoggedIn ? await getDmUnreadCount(user!.id) : 0;
 
   return (
@@ -44,16 +45,15 @@ export default async function MainLayout({ children }: { children: React.ReactNo
         avatarUrl={profile?.avatar_url}
         nickname={profile?.username}
       />
-      <SidebarNav
+      <MainNav
         isLoggedIn={isLoggedIn}
         avatarUrl={profile?.avatar_url}
         nickname={profile?.username}
-        unreadDmCount={unreadDmCount}
+        userId={isLoggedIn ? (user!.id as string) : null}
+        initialUnreadDmCount={unreadDmCount}
       />
 
       <main className="pb-16 md:ml-60 md:pb-0">{children}</main>
-
-      <BottomNav unreadDmCount={unreadDmCount} />
     </div>
   );
 }
