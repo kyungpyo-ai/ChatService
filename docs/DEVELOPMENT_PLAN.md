@@ -1549,6 +1549,91 @@ Phase 7.7 작업 이전에 이미 닉네임을 설정해둔 기존 계정은 이
 
 `ROADMAP.md` Phase 10 참고. MVP 범위 밖이므로 상세화하지 않는다.
 
+## Phase 11 — 쪽지(DM) (상세, 2026-08-17 구현 완료)
+
+로그인 회원 간 1:1 영구 대화. `ROADMAP.md` Phase 11의 확정 요구사항(게스트 제외, Realtime
+즉시 전달, 신고/이미지/안 읽음 표시는 1차 범위 제외)을 그대로 구현했다.
+
+### DB 설계
+
+`messages` 테이블 확장 쪽(별도 `dm_messages` 테이블을 새로 만들지 않는 쪽)으로 확정해 구현했다
+— `room_id`/`session_id`와 동일한 패턴으로 `dm_conversation_id`를 추가하면 `/admin/messages`
+검색, Realtime publication 등록(messages는 이미 `supabase_realtime`에 등록되어 있음) 등 기존
+인프라를 그대로 재사용할 수 있기 때문이다.
+
+- **`dm_conversations`** — `id`, `user_a_id`/`user_b_id`(`profiles(id)` 참조, `on delete
+  cascade`), `created_at`, `last_message_at`. `user_a_id < user_b_id` 체크 제약 + `(user_a_id,
+  user_b_id)` unique 제약으로 정규화해, 같은 두 사용자 사이에 대화가 정확히 하나만 존재하도록
+  강제한다.
+- **`messages.dm_conversation_id`** 컬럼 추가(`dm_conversations(id)` 참조, `on delete
+  cascade`). 기존 `exactly_one_context` 체크 제약(room_id/session_id 중 정확히 하나)을
+  `num_nonnulls(room_id, session_id, dm_conversation_id) = 1`로 3-way 확장했다.
+- **RLS**: `dm_conversations` SELECT는 `auth.uid() in (user_a_id, user_b_id)`로 직접 비교한다
+  — `random_sessions`의 "participants can view their session" 정책과 동일한 패턴이며, 자기
+  자신을 서브쿼리하지 않으므로 `room_members`처럼 SECURITY DEFINER 헬퍼가 별도로 필요하지
+  않았다(애초 계획에서는 필요할 수도 있다고 봤으나 실제로는 불필요했다). `messages`의 DM
+  컨텍스트 SELECT/INSERT 정책은 `dm_conversations`를 `exists()`로 서브쿼리해 참여자 여부를
+  확인하는 방식으로, room/session 기존 정책과 동일한 형태다. INSERT 정책에는 기존
+  `is_user_suspended()` 체크도 그대로 적용해 정지된 계정은 DM도 보낼 수 없다.
+- **`start_or_get_dm_conversation(p_target_user_id)`** SECURITY DEFINER 함수 — 로그인 여부·
+  자기 자신 여부·게스트(=profiles에 없음) 여부·상대 존재 여부·정지 여부를 전부 재검증한 뒤
+  `least`/`greatest`로 정규화한 쌍을 `on conflict (user_a_id, user_b_id) do nothing` + 재조회
+  방식으로 처리한다 — 동시에 같은 두 사용자가 동시에 호출해도 유니크 제약 덕분에 항상 같은
+  대화 id로 수렴한다.
+- **`touch_dm_conversation_last_message()`** — `messages` AFTER INSERT 트리거로, DM 컨텍스트
+  메시지가 들어올 때마다 `dm_conversations.last_message_at`을 갱신해 대화 목록 정렬에 사용한다.
+  트리거 전용 함수라 `archive_room_before_delete()` 등과 동일하게 EXECUTE 권한을 회수했다
+  (get_advisors security 점검 중 이 함수가 기본적으로 anon/authenticated에게 RPC로 직접
+  호출 가능한 상태였던 것을 발견해 추가 마이그레이션으로 잠갔다).
+
+마이그레이션: `supabase/migrations/20260817000000_create_dm_conversations_and_extend_messages.sql`,
+`20260817010000_revoke_execute_on_dm_last_message_trigger_function.sql`.
+
+### 계정 탈퇴와의 상호작용 (범위 내 단순화 결정)
+
+`dm_conversations.user_a_id`/`user_b_id`가 `profiles(id)`를 `on delete cascade`로 참조하므로,
+두 참여자 중 누구든 계정을 탈퇴하면 그 대화와 안에 있던 메시지(`dm_conversation_id`도 `on
+delete cascade`)가 통째로 삭제된다. 방채팅/랜덤채팅처럼 BEFORE DELETE 트리거로 아카이브를
+남기지 않는다 — 신고/모더레이션이 1차 버전 범위 밖으로 명시적으로 제외됐으므로, 이 시점에는
+"삭제 = 보존 없이 완전히 사라짐"이 의도된 단순화다. 신고 기능을 나중에 추가하게 되면 이 부분을
+`archive_room_before_delete()`와 동일한 패턴으로 재검토해야 한다.
+
+### 애플리케이션 계층
+
+- **`lib/queries/dm.ts`** — `getDmConversationList(userId)`(대화 목록, 상대 프로필 + 최신
+  메시지 미리보기를 배치 조회해 합침), `getDmConversationDetail(conversationId, viewerId)`(참여자
+  검증 + 상대 프로필), `getDmMessages`/`getOlderDmMessagesForViewer`(초기 50개 / 이전 대화 더
+  보기, `lib/queries/rooms.ts`의 최신순 조회 후 되돌리기 패턴 재사용). DM은 로그인 회원 전용이고
+  계정 탈퇴 시 대화 자체가 cascade로 사라지므로 방채팅과 달리 "탈퇴한 사용자" 표시 케이스가
+  없다 — 발신자는 항상 viewer 본인 또는 상대 둘 중 하나로 확정된다.
+- **`app/actions/dm.ts`** — `startOrGetDmConversationAction`(RPC 래핑 + 에러 메시지 매핑),
+  `sendDmMessageAction`(`sendRoomMessageAction`과 동일하게 `getClaims()` + rate limit + stale
+  session 처리), `loadOlderDmMessagesAction`.
+- **`lib/realtime/dm.ts`** — `useDmMessages()`. `lib/realtime/messages.ts`의 낙관적 전송 +
+  Realtime INSERT reconcile 패턴을 그대로 재사용하되, 참여자가 항상 둘뿐이고 강퇴·방 삭제
+  개념이 없어 메시지 채널 하나만 구독한다(참여자 변경 채널, kicked/roomDeleted 상태 없음).
+- **화면**: `app/(main)/dm/page.tsx`(대화 목록, `getUserProfile()`로 게스트를 비로그인과
+  동일하게 취급), `app/(chat)/dm/[conversationId]/page.tsx` + `components/dm/dm-chat-view.tsx`
+  (대화 화면 — `ChatHeader`에 `onLeave`/`onOpenParticipants`를 넘기지 않아 강퇴·참여자 패널
+  없는 단순 형태가 되고, `ChatInputBar`에 `onSendImage`를 넘기지 않아 이미지 첨부 버튼이
+  비활성화된다). `components/dm/dm-conversation-list.tsx`가 목록 UI를 담당한다.
+- **진입점**: `components/search/user-search-result-item.tsx`에 쪽지 아이콘 버튼(프로필
+  다이얼로그를 거치지 않고 바로 시작), `components/search/user-profile-dialog.tsx`에 "쪽지
+  보내기" 버튼을 추가하고, `components/search/user-search-panel.tsx`가 `startOrGetDmConversationAction`
+  호출 → `router.push('/dm/{id}')`로 이동하는 공용 핸들러(`handleSendDm`)를 두 곳에 연결한다.
+- **네비게이션**: `components/layout/bottom-nav.tsx`/`sidebar-nav.tsx`의 `NAV_ITEMS`에 "검색"과
+  "내 정보" 사이 "쪽지" 탭(Mail 아이콘)을 추가했다.
+
+### 검증
+
+- `npm run typecheck` / `npm run lint` 통과(기존에도 있던 무관한 react-hooks/incompatible-library
+  경고 2건 제외 — `profile-edit-form.tsx`, `create-room-form.tsx`, 이번 변경과 무관).
+- `npm run build`(`next build`) 성공, `/dm`·`/dm/[conversationId]` 라우트가 정상 등록됨을 확인.
+- `mcp__supabase__get_advisors(security)`로 신규 테이블/함수 점검 — ERROR 0건. WARN은 전부
+  이 프로젝트의 익명 로그인(Anonymous Sign-in) 활성화로 인해 `to authenticated` 정책 전체에
+  붙는 기존 패턴(`join_room`, `is_room_member` 등과 동일)이라 무해하다. 트리거 전용 함수의
+  RPC 직접 노출 1건은 발견 즉시 EXECUTE 권한을 회수해 수정했다(위 마이그레이션 참고).
+
 ---
 
-*— End of DEVELOPMENT_PLAN (Phase 2 상세, 이후 Phase는 착수 시 갱신) —*
+*— End of DEVELOPMENT_PLAN (Phase 2, 11 상세, 이후 Phase는 착수 시 갱신) —*

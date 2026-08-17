@@ -1,7 +1,7 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import { Home, Shuffle, MessagesSquare, Search, UserRound } from "lucide-react";
+import { Home, Shuffle, MessagesSquare, Search, Mail, UserRound } from "lucide-react";
 import { TransitionLink } from "@/components/ui/transition-link";
 import { cn } from "@/lib/utils";
 
@@ -10,11 +10,12 @@ const NAV_ITEMS = [
   { href: "/random", label: "랜덤", icon: Shuffle },
   { href: "/rooms", label: "방 목록", icon: MessagesSquare },
   { href: "/search", label: "검색", icon: Search },
+  { href: "/dm", label: "쪽지", icon: Mail },
   { href: "/profile", label: "내 정보", icon: UserRound },
 ] as const;
 
 /**
- * 모바일 전용 하단 고정 5탭 네비게이션
+ * 모바일 전용 하단 고정 6탭 네비게이션
  */
 export function BottomNav() {
   const pathname = usePathname();

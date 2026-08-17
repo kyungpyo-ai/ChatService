@@ -8,6 +8,7 @@ import {
   Shuffle,
   MessagesSquare,
   Search,
+  Mail,
   UserRound,
   ChevronRight,
   LogOut,
@@ -24,6 +25,7 @@ const NAV_ITEMS = [
   { href: "/random", label: "랜덤채팅", icon: Shuffle },
   { href: "/rooms", label: "방 목록", icon: MessagesSquare },
   { href: "/search", label: "검색", icon: Search },
+  { href: "/dm", label: "쪽지", icon: Mail },
   { href: "/profile", label: "내 정보", icon: UserRound },
 ] as const;
 

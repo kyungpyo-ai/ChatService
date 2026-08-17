@@ -1,12 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useDebouncedCallback } from "use-debounce";
 import { SearchInput } from "@/components/search/search-input";
 import { RecentSearchChips } from "@/components/search/recent-search-chips";
 import { UserSearchResultItem } from "@/components/search/user-search-result-item";
 import { UserProfileDialog } from "@/components/search/user-profile-dialog";
 import { searchUsersAction } from "@/app/actions/users";
+import { startOrGetDmConversationAction } from "@/app/actions/dm";
 import { addRecentSearch, clearRecentSearches, getRecentSearches } from "@/lib/utils/recent-search";
 import { showError } from "@/lib/utils/toast";
 import type { SearchUserResult } from "@/lib/queries/users";
@@ -25,12 +27,16 @@ export function UserSearchPanel({ currentUserId }: { currentUserId: string }) {
   // 확실히 전달하고 있음을 타입으로 보장하기 위해 prop으로 계속 받는다.
   void currentUserId;
 
+  const router = useRouter();
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchUserResult[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
   const [selectedUser, setSelectedUser] = useState<SearchUserResult | null>(null);
+  // 대화 시작 중인 상대 id — 여러 곳(목록 아이콘 버튼, 다이얼로그 버튼)에서 동일한 흐름을
+  // 공유하므로 로딩 상태도 하나로 관리한다.
+  const [startingDmFor, setStartingDmFor] = useState<string | null>(null);
 
   useEffect(() => {
     // localStorage는 서버에서 읽을 수 없어 마운트 이후 클라이언트에서만 불러올 수 있다
@@ -88,6 +94,23 @@ export function UserSearchPanel({ currentUserId }: { currentUserId: string }) {
     setRecentSearches([]);
   };
 
+  /**
+   * "쪽지 보내기" — 이미 대화가 있으면 기존 대화로, 없으면 새로 시작해 이동한다
+   * (startOrGetDmConversationAction, §ROADMAP Phase 11).
+   */
+  const handleSendDm = async (targetUserId: string) => {
+    setStartingDmFor(targetUserId);
+    const result = await startOrGetDmConversationAction(targetUserId);
+    setStartingDmFor(null);
+
+    if (!result.success || !result.data) {
+      showError(result.message || "대화를 시작하지 못했습니다.");
+      return;
+    }
+
+    router.push(`/dm/${result.data.conversationId}`);
+  };
+
   const trimmedQuery = query.trim();
   const showEmptyQueryHint = trimmedQuery.length < MIN_QUERY_LENGTH;
 
@@ -127,6 +150,7 @@ export function UserSearchPanel({ currentUserId }: { currentUserId: string }) {
                 key={user.id}
                 user={user}
                 onClick={() => setSelectedUser(user)}
+                onSendDm={() => void handleSendDm(user.id)}
               />
             ))}
           </div>
@@ -139,6 +163,8 @@ export function UserSearchPanel({ currentUserId }: { currentUserId: string }) {
         onOpenChange={(open) => {
           if (!open) setSelectedUser(null);
         }}
+        onSendDm={() => selectedUser && void handleSendDm(selectedUser.id)}
+        sendingDm={selectedUser !== null && startingDmFor === selectedUser.id}
       />
     </div>
   );

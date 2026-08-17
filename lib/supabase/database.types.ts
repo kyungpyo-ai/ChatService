@@ -110,6 +110,45 @@ export type Database = {
         };
         Relationships: [];
       };
+      dm_conversations: {
+        Row: {
+          created_at: string;
+          id: string;
+          last_message_at: string;
+          user_a_id: string;
+          user_b_id: string;
+        };
+        Insert: {
+          created_at?: string;
+          id?: string;
+          last_message_at?: string;
+          user_a_id: string;
+          user_b_id: string;
+        };
+        Update: {
+          created_at?: string;
+          id?: string;
+          last_message_at?: string;
+          user_a_id?: string;
+          user_b_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "dm_conversations_user_a_id_fkey";
+            columns: ["user_a_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "dm_conversations_user_b_id_fkey";
+            columns: ["user_b_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       guest_profiles: {
         Row: {
           id: string;
@@ -130,6 +169,7 @@ export type Database = {
           content: string;
           content_type: string;
           created_at: string;
+          dm_conversation_id: string | null;
           id: string;
           room_id: string | null;
           sender_id: string | null;
@@ -139,6 +179,7 @@ export type Database = {
           content: string;
           content_type: string;
           created_at?: string;
+          dm_conversation_id?: string | null;
           id?: string;
           room_id?: string | null;
           sender_id?: string | null;
@@ -148,12 +189,20 @@ export type Database = {
           content?: string;
           content_type?: string;
           created_at?: string;
+          dm_conversation_id?: string | null;
           id?: string;
           room_id?: string | null;
           sender_id?: string | null;
           session_id?: string | null;
         };
         Relationships: [
+          {
+            foreignKeyName: "messages_dm_conversation_id_fkey";
+            columns: ["dm_conversation_id"];
+            isOneToOne: false;
+            referencedRelation: "dm_conversations";
+            referencedColumns: ["id"];
+          },
           {
             foreignKeyName: "messages_room_id_fkey";
             columns: ["room_id"];
@@ -839,10 +888,10 @@ export type Database = {
       end_abandoned_random_sessions: { Args: never; Returns: undefined };
       end_random_session: { Args: { p_session_id: string }; Returns: undefined };
       heartbeat_random_session: {
-        Args: { p_session_id: string };
+        Args: { p_session_id: string; p_stale_seconds?: number };
         Returns: {
           ended_by: string;
-          partner_last_seen_at: string;
+          partner_stale: boolean;
           status: string;
         }[];
       };
@@ -874,6 +923,10 @@ export type Database = {
       rooms_with_online_member: {
         Args: { p_room_ids: string[]; p_threshold: string };
         Returns: string[];
+      };
+      start_or_get_dm_conversation: {
+        Args: { p_target_user_id: string };
+        Returns: string;
       };
     };
     Enums: {

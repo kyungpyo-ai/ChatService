@@ -1023,10 +1023,66 @@ no-ff merge, 프로덕션 배포 완료.
 - [ ] 광고 배치 및 수익화
 - [ ] ~~운영자 관리 화면~~ → Phase 7.5로 승격 (MVP 범위에 포함)
 - [ ] 관심사 기반 매칭
-- [ ] 친구·쪽지·알림
+- [ ] ~~친구·쪽지·알림~~ → 쪽지는 Phase 11로 승격(MVP 범위에 포함), 친구/알림은 범위 외로 유지
 - [ ] 콘텐츠 자동 검수
 
 **연관 PRD**: §7.4
+
+---
+
+## Phase 11 — 쪽지(DM) (완료, 2026-08-17)
+
+로그인 회원 간 1:1 영구 대화. 방채팅/랜덤채팅과 달리 정원·비밀번호·제목이 없고, 두 사용자
+사이에 정확히 하나의 대화만 존재한다(재진입 시 새로 만들지 않고 기존 대화를 이어간다).
+
+### 확정된 요구사항 (2026-08-17 사용자 확인)
+
+- **대상**: 로그인 회원끼리만. 게스트/익명 계정은 송수신 불가(방채팅/검색과 동일한 접근 기준).
+- **실시간성**: 방채팅과 동일하게 Realtime 즉시 전달 — `lib/realtime/messages.ts`의
+  기존 패턴(낙관적 전송 + Realtime INSERT reconcile) 재사용.
+- **신고/차단**: 1차 버전 범위 제외. `reports` 테이블 확장은 이후 별도 Phase에서.
+- **진입점**: 유저 검색(`/search`) 결과 및 `UserProfileDialog`에 "쪽지 보내기" 버튼.
+- **네비게이션**: 홈/랜덤채팅/방목록/검색/내정보와 동급으로 새 탭 "쪽지" 추가
+  (`components/layout/bottom-nav.tsx`, `sidebar-nav.tsx`의 `NAV_ITEMS`).
+- **이미지 전송**: 1차 버전 범위 제외(텍스트만) — 방채팅 이미지 전송(Phase 6) 패턴을
+  그대로 확장 가능하니 이후 Phase에서 검토.
+- **안 읽음 표시/알림**: 1차 버전 범위 제외 — 대화 목록은 최근 메시지 시각순 정렬만 제공.
+
+### 구현 항목
+
+- [x] DB: `dm_conversations` 테이블 신설(정규화 쌍 unique 제약) + `messages.dm_conversation_id`
+      컬럼 추가로 `exactly_one_context` 체크를 3-way(`num_nonnulls`)로 확장
+- [x] RLS: `dm_conversations`/`messages`(dm 컨텍스트) 모두 참여자 본인만 select/insert 가능,
+      정지된 계정은 INSERT 거부(`is_user_suspended()` 재사용)
+- [x] `start_or_get_dm_conversation()` SECURITY DEFINER 함수 — 대화 시작/재사용을 원자적으로 처리
+- [x] `touch_dm_conversation_last_message()` 트리거 — 새 메시지마다 `last_message_at` 갱신
+- [x] 대화 목록 화면(`app/(main)/dm/page.tsx`) — 상대 닉네임/아바타/마지막 메시지 미리보기,
+      최근 메시지 시각순 정렬
+- [x] 대화 화면(`app/(chat)/dm/[conversationId]/page.tsx` + `components/dm/dm-chat-view.tsx`) —
+      `ChatHeader`/`ChatMessageBubble`/`ChatInputBar` 재사용, 강퇴·참여자 패널 없는 단순 형태
+- [x] `lib/realtime/dm.ts`의 `useDmMessages()` — 방채팅과 동일한 낙관적 전송 + reconcile 패턴
+- [x] 검색 결과 아이템 + 프로필 다이얼로그에 "쪽지 보내기" 진입점 연결
+- [x] 하단 탭/사이드바 네비게이션에 "쪽지" 탭 추가
+
+### 설계 결정 — messages 테이블 확장 vs 별도 dm_messages 테이블
+
+착수 전 재검토 항목이었으나, 계획대로 **messages 테이블 확장** 쪽으로 확정해 구현했다.
+`room_id`/`session_id`와 동일한 패턴으로 `dm_conversation_id`를 추가하면 `/admin/messages`
+검색, Realtime publication 등록(messages는 이미 `supabase_realtime`에 등록됨) 등 기존
+인프라를 그대로 재사용할 수 있어 별도 테이블을 만들 이유가 없었다. `dm_conversations` SELECT
+RLS는 `random_sessions`처럼 참여자 컬럼을 직접 비교하는 것만으로 재귀 문제가 없어, 애초
+계획했던 `is_room_member()`류 SECURITY DEFINER 헬퍼가 이 부분에는 불필요했다(room_members는
+"자기 테이블을 서브쿼리"해서 재귀가 났던 것이지, dm_conversations는 그런 구조가 아니다).
+
+계정 탈퇴와의 상호작용은 단순화했다 — `dm_conversations`가 `profiles(id)`를 `on delete
+cascade`로 참조하므로 참여자 중 한쪽이 탈퇴하면 대화와 메시지가 통째로 삭제되고
+별도 아카이브를 남기지 않는다(방채팅/랜덤채팅의 BEFORE DELETE 트리거 아카이브와 다름).
+신고 기능이 이번 범위에서 제외됐으므로 지금 시점엔 보존할 이유가 없다는 판단이며, 신고
+기능을 나중에 추가하면 재검토가 필요하다.
+
+상세 구현 내역은 `DEVELOPMENT_PLAN.md` Phase 11 참고.
+
+**연관 PRD**: 없음(Phase 10에서 승격된 신규 범위)
 
 ---
 
@@ -1052,3 +1108,4 @@ no-ff merge, 프로덕션 배포 완료.
 | 9 | 배포 | 핵심 항목 완료(법률 검토·계정 초기화·커스텀 도메인 대기) |
 | 9.1 | 배포 후 실사용 버그 수정 + 랜덤채팅 이탈 감지 개선 | 완료 |
 | 10 | 후속 검토 (범위 외) | 미착수 |
+| 11 | 쪽지(DM) | 완료 |
