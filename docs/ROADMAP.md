@@ -1023,10 +1023,53 @@ no-ff merge, 프로덕션 배포 완료.
 - [ ] 광고 배치 및 수익화
 - [ ] ~~운영자 관리 화면~~ → Phase 7.5로 승격 (MVP 범위에 포함)
 - [ ] 관심사 기반 매칭
-- [ ] 친구·쪽지·알림
+- [ ] ~~친구·쪽지·알림~~ → 쪽지는 Phase 11로 승격(MVP 범위에 포함), 친구/알림은 범위 외로 유지
 - [ ] 콘텐츠 자동 검수
 
 **연관 PRD**: §7.4
+
+---
+
+## Phase 11 — 쪽지(DM) (착수 예정, 2026-08-17 요구사항 확정)
+
+로그인 회원 간 1:1 영구 대화. 방채팅/랜덤채팅과 달리 정원·비밀번호·제목이 없고, 두 사용자
+사이에 정확히 하나의 대화만 존재한다(재진입 시 새로 만들지 않고 기존 대화를 이어간다).
+
+### 확정된 요구사항 (2026-08-17 사용자 확인)
+
+- **대상**: 로그인 회원끼리만. 게스트/익명 계정은 송수신 불가(방채팅/검색과 동일한 접근 기준).
+- **실시간성**: 방채팅과 동일하게 Realtime 즉시 전달 — `lib/realtime/messages.ts`의
+  기존 패턴(낙관적 전송 + Realtime INSERT reconcile) 재사용.
+- **신고/차단**: 1차 버전 범위 제외. `reports` 테이블 확장은 이후 별도 Phase에서.
+- **진입점**: 유저 검색(`/search`) 결과 및 `UserProfileDialog`에 "쪽지 보내기" 버튼.
+- **네비게이션**: 홈/랜덤채팅/방목록/검색/내정보와 동급으로 새 탭 "쪽지" 추가
+  (`components/layout/bottom-nav.tsx`, `sidebar-nav.tsx`의 `NAV_ITEMS`).
+- **이미지 전송**: 1차 버전 범위 제외(텍스트만) — 방채팅 이미지 전송(Phase 6) 패턴을
+  그대로 확장 가능하니 이후 Phase에서 검토.
+- **안 읽음 표시/알림**: 1차 버전 범위 제외 — 대화 목록은 최근 메시지 시각순 정렬만 제공.
+
+### 설계 방향
+
+- **DB**: `dm_conversations`(id, user_a_id, user_b_id — `user_a_id < user_b_id`로 정규화해
+  동일 쌍 중복 방지 unique 제약, last_message_at) 신설. 메시지는 새 테이블을 만들지 않고
+  기존 `public.messages`의 `exactly_one_context` 체크 제약을 3-way로 확장해
+  `dm_conversation_id` 컬럼을 추가하는 쪽을 우선 검토한다 — `messages` 테이블이 이미
+  room/session 두 컨텍스트를 겸하는 구조라 컨벤션에 맞고, 관리자 메시지 검색
+  (`/admin/messages`)·Realtime publication 등록 등 기존 인프라를 그대로 재사용할 수 있다.
+- **RLS**: 대화 참여자(user_a_id/user_b_id 본인)만 조회/삽입 가능. `rooms`/`messages`의
+  기존 정책 패턴(SECURITY DEFINER 헬퍼 함수로 재귀 회피) 그대로 따른다.
+- **대화 시작**: `startOrGetDmConversation(targetUserId)` 서버 액션 — 이미 대화가 있으면
+  기존 id 반환, 없으면 생성 후 반환(정규화된 쌍 unique 제약으로 동시 요청 경쟁 상태도 안전).
+- **화면**: `app/(main)/dm/page.tsx`(대화 목록), `app/(chat)/dm/[conversationId]/page.tsx`
+  (대화 화면 — `ChatHeader`/`ChatMessageBubble`/`ChatInputBar` 재사용, 방채팅과 달리
+  강퇴/참여자 패널 없음).
+
+### 착수 전 확인 필요
+
+- [ ] 위 DB 설계(messages 테이블 확장 vs 별도 dm_messages 테이블) 착수 시 재검토
+- [ ] 상세 태스크는 착수 시 `DEVELOPMENT_PLAN.md`에 분해
+
+**연관 PRD**: 없음(Phase 10에서 승격된 신규 범위 — PRD.md에 추가 필요)
 
 ---
 
