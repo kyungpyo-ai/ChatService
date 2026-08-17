@@ -1150,6 +1150,40 @@ no-ff merge, 프로덕션 배포 완료.
 
 마이그레이션: `supabase/migrations/20260818000000_dm_notes_realtime_and_reply_recipient_check.sql`.
 
+### 후속 개선 2 (2026-08-17, Preview 실사용 검증 중 발견한 버그 2건)
+
+위 배지 실시간 갱신을 Preview에 배포해 사용자가 직접 써보며 발견한 문제 2건.
+
+1. **배지 실시간 갱신이 "될 때도 있고 안 될 때도 있음"** — `useDmUnreadBadge`가
+   `supabase.realtime.setAuth(session.access_token)`를 마운트 시점에 딱 한 번만 호출하고
+   있었다. 세션 토큰이 자동 갱신되면(`TOKEN_REFRESHED`) Realtime 클라이언트는 여전히 낡은
+   토큰을 쓰게 되어, 그 이후로는 RLS(`auth.uid() in (sender_id, recipient_id)`) 인증이
+   실패해 이벤트 자체를 조용히 못 받는다 — Realtime 구독 하나만 믿고 안전망이 없던 것이
+   원인으로 추정된다(§CLAUDE.md "즉시 감지 계열은 신뢰도가 낮다, 항상 별도의 주기적
+   재검증을 안전망으로 둘 것"과 동일한 패턴). 두 가지로 보강했다:
+   - `supabase.auth.onAuthStateChange()`로 `TOKEN_REFRESHED` 이벤트마다 `realtime.setAuth()`를
+     다시 호출.
+   - 탭이 다시 포커스될 때(`visibilitychange`)와 60초 폴링으로 `getDmUnreadCountAction()`
+     (새로 추가한 서버 액션, `getDmUnreadCount()` 쿼리를 감싼 얇은 래퍼)을 호출해 실제 값으로
+     재동기화하는 안전망 추가. 배지 하나 세는 용도라 방채팅 하트비트(5~10초)처럼 자주 돌
+     필요는 없다고 판단해 60초로 잡았다.
+2. **읽었는데도 배지가 안 사라질 때가 있음** — `markDmNoteReadAction`을 `useEffect` 안에서
+   `void`로 호출만 하고 있어, 서버 액션의 `revalidatePath("/", "layout")`만으로 현재 화면이
+   확실히 다시 렌더링된다는 보장이 약했다. `markDmNoteReadAction`/`hideDmNoteAction` 성공
+   시 `router.refresh()`를 명시적으로 호출하도록 `dm-note-detail.tsx`(읽음)와
+   `dm-note-list.tsx`(삭제 — 기존엔 로컬 state만 낙관적으로 지우고 있어 배지 쪽 반영이
+   보장되지 않았음)에 각각 추가했다.
+
+**검증 관련 참고**: 실제 두 로그인 세션으로 Playwright 재현을 시도했으나, 이 작업 환경
+(worktree)에는 Supabase 환경 변수(`.env.local`)와 확인된 테스트 계정이 없어 로컬 dev 서버로
+로그인 플로우 전체를 재현할 수 없었다 — 특히 이번 증상의 핵심 원인으로 추정한 "토큰 갱신
+시점"은 실제 세션 만료 주기를 기다리거나 인위적으로 만료시켜야 재현 가능해, 짧은 세션 안에서
+결정적으로 재현하기도 어렵다. 대신 코드 레벨에서 원인(설명 1번)을 특정하고 대응(토큰 갱신
+리스너 + 폴링/포커스 안전망)한 뒤 `npm run typecheck`/`npm run lint`/`npm run build`로
+정적 검증했다 — Preview 배포 후 실제 두 계정으로 재검증은 병합 전 사용자가 직접 진행하기로 함.
+
+마이그레이션: 없음(DB 변경 없이 클라이언트 로직만 수정).
+
 **연관 PRD**: 없음(Phase 10에서 승격된 신규 범위 — PRD.md에 추가 필요)
 
 ---

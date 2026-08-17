@@ -1686,6 +1686,50 @@ Phase 7.7 작업 이전에 이미 닉네임을 설정해둔 기존 계정은 이
 성공, `mcp__supabase__get_advisors(security)` ERROR 0건(WARN은 기존과 동일한 패턴), SQL로
 `dm_notes`가 `supabase_realtime` publication에 실제로 등록됐는지 재확인.
 
+### 후속 개선 2 (2026-08-17, 같은 브랜치에 새 커밋 — Preview 실사용 검증 중 발견한 버그 2건)
+
+위 배지 실시간 갱신을 Preview에 올려 사용자가 직접 확인하며 발견한 문제.
+
+**① 배지 실시간 갱신이 "될 때도 있고 안 될 때도 있음"**
+
+- 원인으로 추정한 지점: `useDmUnreadBadge`가 `supabase.realtime.setAuth(session.access_token)`를
+  effect 마운트 시점에 딱 한 번만 호출하고 있었다. 세션 토큰이 자동 갱신되면 Realtime
+  클라이언트는 여전히 마운트 시점의 낡은 토큰을 쓰게 되고, RLS(`auth.uid() in (sender_id,
+  recipient_id)`)가 그 토큰으로 재검증에 실패해 이후 INSERT 이벤트를 조용히 못 받는다 —
+  에러가 나지 않고 그냥 안 오기 때문에 "가끔 안 됨"으로 보인 것으로 추정.
+- 대응 ①: `supabase.auth.onAuthStateChange((event, session) => { if (event ===
+  'TOKEN_REFRESHED' && session) supabase.realtime.setAuth(session.access_token); })`를 추가해
+  토큰이 갱신될 때마다 Realtime 클라이언트에도 새 토큰을 다시 전달.
+- 대응 ②(안전망): `app/actions/dm.ts`에 `getDmUnreadCountAction()`을 새로 추가(기존
+  `getDmUnreadCount()` 쿼리를 감싼 얇은 래퍼, 호출자 본인의 `getClaims()` 세션으로 대상을
+  결정해 클라이언트가 넘긴 userId를 신뢰하지 않음). `useDmUnreadBadge`가 `visibilitychange`로
+  탭이 다시 보일 때, 그리고 60초 간격 폴링으로 이 액션을 호출해 실제 값으로 재동기화한다.
+  Realtime 구독 하나만 믿지 않는다는 점에서 `lib/realtime/random.ts`의 "정기 하트비트(신뢰
+  소스) + Presence(빠른 힌트, 단독 신뢰 불가)" 이중 구조와 같은 사고방식이다 — 다만 배지는
+  방채팅 수준의 긴급성이 없으므로 하트비트만큼 촘촘할 필요는 없어 60초로 잡았다.
+
+**② 읽었는데도 배지가 안 사라질 때가 있음**
+
+- `components/dm/dm-note-detail.tsx`가 `markDmNoteReadAction`을 `useEffect` 안에서 `void`로
+  호출만 하고 결과를 기다리지 않고 있었다. 서버 액션의 `revalidatePath("/", "layout")`만으로
+  현재 클라이언트 화면이 확실히 다시 렌더링된다는 보장이 약하다고 보고, 성공 응답을 받으면
+  `router.refresh()`를 명시적으로 호출하도록 바꿨다(`useEffect` 의존성 배열에 `router` 추가).
+- `components/dm/dm-note-list.tsx`의 삭제 핸들러도 동일한 문제가 있었다 — 로컬 state에서
+  낙관적으로 항목만 지우고 있어서, 지운 쪽지가 안읽음 상태였다면 배지가 갱신될 보장이
+  없었다. `hideDmNoteAction` 성공 시 `router.refresh()`를 추가.
+
+마이그레이션: 없음(DB 변경 없이 클라이언트 로직만 수정 — `useDmUnreadBadge`/`dm-note-detail.tsx`/
+`dm-note-list.tsx`/`app/actions/dm.ts`의 새 `getDmUnreadCountAction`).
+
+**검증**: `npm run typecheck`/`npm run lint`(기존 무관 경고 2건 제외)/`npm run build` 모두
+통과. **두 로그인 세션으로 실제 재현은 하지 못했다** — 이 작업 환경(worktree)에는
+`.env.local`(Supabase URL/키)과 확인된 테스트 계정이 없어 로컬 dev 서버로 로그인부터 재현할
+방법이 없었고, 특히 원인으로 지목한 "토큰 자동 갱신 시점"은 세션 만료 주기(수십 분~시간
+단위)를 기다리거나 인위적으로 토큰을 무효화해야 재현되는 종류라 짧은 세션 안에서 결정적으로
+재현하기 어려운 성격이었다. 코드 레벨에서 원인을 특정하고 대응(토큰 갱신 리스너 추가 +
+포커스/폴링 안전망)한 뒤 정적 검증까지만 마쳤고, Preview에서 실제 두 계정으로 확인하는 것은
+병합 전 사용자가 직접 진행하기로 했다.
+
 ---
 
 *— End of DEVELOPMENT_PLAN (Phase 2, 11 상세, 이후 Phase는 착수 시 갱신) —*

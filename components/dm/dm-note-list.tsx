@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { ArrowDownLeft, ArrowUpRight, MoreVertical, Trash2 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -27,6 +28,7 @@ interface DmNoteListProps {
  * "..." 메뉴에서 항목 단위 소프트 삭제(나만 안 보이게)를 할 수 있다.
  */
 export function DmNoteList({ notes: initialNotes }: DmNoteListProps) {
+  const router = useRouter();
   const [notes, setNotes] = useState(initialNotes);
 
   const handleDelete = async (noteId: string) => {
@@ -37,7 +39,14 @@ export function DmNoteList({ notes: initialNotes }: DmNoteListProps) {
     if (!result.success) {
       showError(result.message);
       setNotes(prevNotes);
+      return;
     }
+
+    // 로컬에서는 낙관적으로 목록에서만 지웠을 뿐이다 — 삭제한 쪽지가 안읽음 상태였다면
+    // 네비게이션 배지도 갱신되어야 하므로, 서버 액션의 revalidatePath만 믿지 않고
+    // router.refresh()로 현재 라우트(레이아웃 포함)를 명시적으로 다시 가져온다
+    // (§components/dm/dm-note-detail.tsx와 동일한 이유, 실사용 확인 2026-08-17).
+    router.refresh();
   };
 
   if (notes.length === 0) {

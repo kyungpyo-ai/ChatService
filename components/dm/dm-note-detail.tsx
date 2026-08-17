@@ -28,14 +28,20 @@ export function DmNoteDetailView({ note }: DmNoteDetailViewProps) {
   const [sending, setSending] = useState(false);
   const markedAsReadRef = useRef(false);
 
-  // 받은 쪽지를 열람하면 1회만 읽음 처리한다. 목록/네비게이션 배지는 서버 액션의
-  // revalidatePath("/", "layout")로 갱신된다.
+  // 받은 쪽지를 열람하면 1회만 읽음 처리한다. 서버 액션이 revalidatePath("/", "layout")를
+  // 호출하긴 하지만, 그것만으로 지금 화면이 확실히 다시 렌더링된다는 보장이 약해(§실사용 확인
+  // 2026-08-17, "읽었는데도 배지가 안 사라질 때가 있음") 성공 시 router.refresh()를 명시적으로
+  // 호출해 현재 라우트의 서버 컴포넌트 트리(레이아웃의 안읽음 배지 포함)를 강제로 다시 가져온다.
   useEffect(() => {
     if (note.direction === "received" && !markedAsReadRef.current) {
       markedAsReadRef.current = true;
-      void markDmNoteReadAction(note.id);
+      void markDmNoteReadAction(note.id).then((result) => {
+        if (result.success) {
+          router.refresh();
+        }
+      });
     }
-  }, [note.id, note.direction]);
+  }, [note.id, note.direction, router]);
 
   const handleSendReply = async () => {
     const trimmed = replyContent.trim();
