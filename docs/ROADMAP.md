@@ -1030,43 +1030,68 @@ no-ff merge, 프로덕션 배포 완료.
 
 ---
 
-## Phase 11 — 쪽지(DM) (착수 예정, 2026-08-17 요구사항 확정)
+## Phase 11 — 쪽지(DM) (재설계, 2026-08-17)
 
-로그인 회원 간 1:1 영구 대화. 방채팅/랜덤채팅과 달리 정원·비밀번호·제목이 없고, 두 사용자
-사이에 정확히 하나의 대화만 존재한다(재진입 시 새로 만들지 않고 기존 대화를 이어간다).
+> ⚠️ **1차 설계 폐기 및 재설계**: 처음엔 "1:1 영구 대화(채팅 스레드)" 형태로 설계·구현했으나
+> (`feature/dm` 브랜치, 커밋 `7aed535`), 사용자 확인 결과 실제로 원한 것은 **포털 사이트류
+> "쪽지함"** — 낱개의 단발성 쪽지를 주고받는 방식이지 실시간 채팅창이 아니었다. 아래는
+> 정정된 요구사항이며, 이전 구현(`dm_conversations` 테이블 + `messages` 3-way 확장,
+> 대화 스레드 UI)은 이 설계와 맞지 않아 폐기하고 새로 만든다. 원격 Supabase에 이미 적용된
+> 1차 마이그레이션도 되돌린다(§아래 "폐기 처리" 참고).
 
-### 확정된 요구사항 (2026-08-17 사용자 확인)
+로그인 회원 간 단발성 쪽지. "대화가 이어지는 채팅창"이 아니라 **쪽지 한 통 한 통이 각각
+독립된 항목**이며, 받은함/보낸함을 하나로 합친 목록에서 방향(받음/보냄)만 구분해 보여준다.
+
+### 확정된 요구사항 (2026-08-17 사용자 확인, 재정정)
 
 - **대상**: 로그인 회원끼리만. 게스트/익명 계정은 송수신 불가(방채팅/검색과 동일한 접근 기준).
-- **실시간성**: 방채팅과 동일하게 Realtime 즉시 전달 — `lib/realtime/messages.ts`의
-  기존 패턴(낙관적 전송 + Realtime INSERT reconcile) 재사용.
+- **형태**: 단발성 쪽지 — 채팅 스레드가 아니다. 답장은 가능하지만(받은 쪽지에 답장하면 상대에게
+  새 쪽지 1개가 감), 대화창처럼 계속 이어붙여 보여주지 않는다. 답장은 원본 쪽지를 참조만 한다.
+- **목록 UI**: 받은함/보낸함 탭 분리 없이 **하나의 통합 목록**에서 방향(받음/보냄) 아이콘·라벨로
+  구분 표시. 최신순 정렬.
+- **읽음 처리**: 쪽지는 개별 항목이므로 항목 단위로 읽음/안읽음 상태를 가진다.
+- **알림**: 네비게이션 "쪽지" 탭에 **안읽음 개수 배지**만 표시(1차 범위). 브라우저 푸시/이메일
+  알림은 범위 제외.
+- **삭제**: 쪽지 항목 단위로 "나만 안 보이게" 삭제(발신자/수신자 각자 자기 쪽에서만 숨김,
+  상대방 목록에는 영향 없음 — 방 나가기와 동일한 소프트 삭제 개념).
 - **신고/차단**: 1차 버전 범위 제외. `reports` 테이블 확장은 이후 별도 Phase에서.
 - **진입점**: 유저 검색(`/search`) 결과 및 `UserProfileDialog`에 "쪽지 보내기" 버튼.
-- **네비게이션**: 홈/랜덤채팅/방목록/검색/내정보와 동급으로 새 탭 "쪽지" 추가
-  (`components/layout/bottom-nav.tsx`, `sidebar-nav.tsx`의 `NAV_ITEMS`).
-- **이미지 전송**: 1차 버전 범위 제외(텍스트만) — 방채팅 이미지 전송(Phase 6) 패턴을
-  그대로 확장 가능하니 이후 Phase에서 검토.
-- **안 읽음 표시/알림**: 1차 버전 범위 제외 — 대화 목록은 최근 메시지 시각순 정렬만 제공.
+- **네비게이션**: 홈/랜덤채팅/방목록/검색/내정보와 동급으로 새 탭 "쪽지" 추가(안읽음 배지 포함).
+- **이미지 전송**: 1차 버전 범위 제외(텍스트만).
+- **실시간성**: 채팅창이 아니므로 방채팅 수준의 즉시 Realtime 불필요. 목록 진입 시 조회로
+  충분하고, 안읽음 배지 정도만 실시간/폴링으로 갱신하면 된다(구현 시 판단).
 
 ### 설계 방향
 
-- **DB**: `dm_conversations`(id, user_a_id, user_b_id — `user_a_id < user_b_id`로 정규화해
-  동일 쌍 중복 방지 unique 제약, last_message_at) 신설. 메시지는 새 테이블을 만들지 않고
-  기존 `public.messages`의 `exactly_one_context` 체크 제약을 3-way로 확장해
-  `dm_conversation_id` 컬럼을 추가하는 쪽을 우선 검토한다 — `messages` 테이블이 이미
-  room/session 두 컨텍스트를 겸하는 구조라 컨벤션에 맞고, 관리자 메시지 검색
-  (`/admin/messages`)·Realtime publication 등록 등 기존 인프라를 그대로 재사용할 수 있다.
-- **RLS**: 대화 참여자(user_a_id/user_b_id 본인)만 조회/삽입 가능. `rooms`/`messages`의
-  기존 정책 패턴(SECURITY DEFINER 헬퍼 함수로 재귀 회피) 그대로 따른다.
-- **대화 시작**: `startOrGetDmConversation(targetUserId)` 서버 액션 — 이미 대화가 있으면
-  기존 id 반환, 없으면 생성 후 반환(정규화된 쌍 unique 제약으로 동시 요청 경쟁 상태도 안전).
-- **화면**: `app/(main)/dm/page.tsx`(대화 목록), `app/(chat)/dm/[conversationId]/page.tsx`
-  (대화 화면 — `ChatHeader`/`ChatMessageBubble`/`ChatInputBar` 재사용, 방채팅과 달리
-  강퇴/참여자 패널 없음).
+- **DB**: 기존 `messages`/`dm_conversations`(1차 설계)와 무관한 새 테이블
+  `dm_notes`(id, sender_id, recipient_id, content, reply_to_id → 자기 자신 참조(nullable),
+  read_at timestamptz(nullable), hidden_by_sender bool, hidden_by_recipient bool, created_at)
+  신설. "대화"라는 그룹 개념이 없으므로 `dm_conversations` 같은 상위 테이블이 필요 없다.
+- **RLS**: sender_id 또는 recipient_id 본인만 조회 가능. INSERT는 본인이 sender_id일 때만,
+  대상이 게스트가 아닌 회원인지·정지 계정이 아닌지 SECURITY DEFINER 함수로 검증.
+- **읽음 처리**: 수신자가 쪽지를 열람하면 `read_at` 갱신하는 서버 액션(또는 조회 쿼리에서
+  자동 처리 — 착수 시 UX와 함께 결정).
+- **삭제**: `hidden_by_sender`/`hidden_by_recipient` 플래그 UPDATE (실제 DELETE 아님 — 상대방
+  쪽 사본은 유지).
+- **화면**: `app/(main)/dm/page.tsx` 통합 목록(방향 아이콘/라벨, 안읽음 강조, 각 항목 스와이프
+  또는 메뉴로 삭제) + 쪽지 상세/답장 다이얼로그 또는 별도 페이지(착수 시 UI 형태 결정 —
+  채팅 버블이 아니라 "편지" 형태에 가까움).
+- **네비게이션 배지**: 안읽음 개수를 세는 쿼리(또는 SECURITY DEFINER 함수)를 레이아웃에서
+  호출해 `bottom-nav.tsx`/`sidebar-nav.tsx`에 배지로 표시.
+
+### 폐기 처리 (1차 설계 롤백)
+
+- [ ] `feature/dm` 브랜치의 1차 구현 커밋은 참고용으로만 남기고 main엔 merge하지 않음
+      (로컬 main은 이미 merge 전 상태로 reset 완료, origin/main엔 애초에 push 안 됨)
+- [ ] 원격 Supabase(`rhtjdbgjpoucpwkfalxp`)에 적용된 1차 마이그레이션
+      (`20260817000000_create_dm_conversations_and_extend_messages.sql`,
+      `20260817010000_revoke_execute_on_dm_last_message_trigger_function.sql`) 되돌리는
+      롤백 마이그레이션 추가 — `dm_conversations` 테이블 drop, `messages.dm_conversation_id`
+      컬럼/제약/정책/트리거 제거, `exactly_one_context`를 2-way로 원복
 
 ### 착수 전 확인 필요
 
-- [ ] 위 DB 설계(messages 테이블 확장 vs 별도 dm_messages 테이블) 착수 시 재검토
+- [ ] 답장(reply)의 정확한 UX(쪽지 상세 화면에서 답장 vs 목록에서 바로 답장) 착수 시 결정
 - [ ] 상세 태스크는 착수 시 `DEVELOPMENT_PLAN.md`에 분해
 
 **연관 PRD**: 없음(Phase 10에서 승격된 신규 범위 — PRD.md에 추가 필요)
