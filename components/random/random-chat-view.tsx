@@ -8,7 +8,6 @@ import { ChatMessageBubble, type ChatMessage } from "@/components/chat/chat-mess
 import { ChatInputBar } from "@/components/chat/chat-input-bar";
 import { Button } from "@/components/ui/button";
 import { RandomReportButton } from "@/components/random/report-button";
-import { EndSessionDialog } from "@/components/random/end-session-dialog";
 import { useRandomSessionMessages } from "@/lib/realtime/random";
 import { useSingleTabLock } from "@/lib/hooks/use-single-tab-lock";
 import { useHeartbeat } from "@/lib/hooks/use-heartbeat";
@@ -74,7 +73,6 @@ function RandomChatViewActive({
   useHeartbeat();
   const [endedByMe, setEndedByMe] = useState(initialEndedByMe);
   const [reportOpen, setReportOpen] = useState(false);
-  const [endDialogOpen, setEndDialogOpen] = useState(false);
   const { messages, partnerEnded, sendMessage, sendImageMessage } = useRandomSessionMessages(
     sessionId,
     initialMessages,
@@ -110,13 +108,23 @@ function RandomChatViewActive({
   };
 
   const handleEnd = async () => {
-    setEndDialogOpen(false);
     const result = await endRandomSessionAction(sessionId);
     if (!result.success) {
       showError(result.message);
       return;
     }
     setEndedByMe(true);
+  };
+
+  // 뒤로가기(< 익명과의 대화)를 종료 버튼과 동일하게 취급한다 — 대화가 아직 진행 중이면
+  // 뒤로가기도 곧바로 종료 처리하고, 이미 종료된 뒤라면(재매칭 대기 화면) 평범하게 홈으로
+  // 이동한다(§실사용 요청, 2026-08-17).
+  const handleBack = () => {
+    if (sessionEnded) {
+      router.push("/");
+      return;
+    }
+    void handleEnd();
   };
 
   const handleRematch = async () => {
@@ -131,7 +139,8 @@ function RandomChatViewActive({
       <ChatHeader
         title="익명과의 대화"
         backHref="/"
-        onLeave={sessionEnded ? undefined : () => setEndDialogOpen(true)}
+        onBackClick={handleBack}
+        onLeave={sessionEnded ? undefined : () => void handleEnd()}
         leaveLabel="종료"
         onReport={() => setReportOpen(true)}
       />
@@ -178,11 +187,6 @@ function RandomChatViewActive({
         <ChatInputBar onSend={handleSend} onSendImage={handleSendImage} />
       )}
       <RandomReportButton sessionId={sessionId} open={reportOpen} onOpenChange={setReportOpen} />
-      <EndSessionDialog
-        open={endDialogOpen}
-        onOpenChange={setEndDialogOpen}
-        onConfirm={() => void handleEnd()}
-      />
     </div>
   );
 }
