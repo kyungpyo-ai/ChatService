@@ -8,6 +8,7 @@ import {
   Shuffle,
   MessagesSquare,
   Search,
+  Mail,
   UserRound,
   ChevronRight,
   LogOut,
@@ -24,6 +25,7 @@ const NAV_ITEMS = [
   { href: "/random", label: "랜덤채팅", icon: Shuffle },
   { href: "/rooms", label: "방 목록", icon: MessagesSquare },
   { href: "/search", label: "검색", icon: Search },
+  { href: "/dm", label: "쪽지", icon: Mail },
   { href: "/profile", label: "내 정보", icon: UserRound },
 ] as const;
 
@@ -31,6 +33,8 @@ interface SidebarNavProps {
   isLoggedIn: boolean;
   avatarUrl?: string | null;
   nickname?: string | null;
+  /** 쪽지 탭에 표시할 안읽음 개수 — 0이면 배지를 표시하지 않는다 */
+  unreadDmCount?: number;
 }
 
 /**
@@ -38,7 +42,12 @@ interface SidebarNavProps {
  *
  * 하단에 AdBanner → 로그인 시 프로필 요약 카드 / 비로그인 시 로그인·회원가입 버튼 → 다크모드 토글 순으로 배치한다.
  */
-export function SidebarNav({ isLoggedIn, avatarUrl, nickname }: SidebarNavProps) {
+export function SidebarNav({
+  isLoggedIn,
+  avatarUrl,
+  nickname,
+  unreadDmCount = 0,
+}: SidebarNavProps) {
   const pathname = usePathname();
 
   return (
@@ -63,6 +72,11 @@ export function SidebarNav({ isLoggedIn, avatarUrl, nickname }: SidebarNavProps)
             >
               <Icon size={18} />
               {label}
+              {href === "/dm" && unreadDmCount > 0 && (
+                <span className="bg-destructive ml-auto flex h-5 min-w-5 items-center justify-center rounded-full px-1 text-[10px] font-semibold text-white">
+                  {unreadDmCount > 99 ? "99+" : unreadDmCount}
+                </span>
+              )}
             </TransitionLink>
           );
         })}

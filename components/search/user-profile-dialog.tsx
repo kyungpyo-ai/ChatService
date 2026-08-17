@@ -1,6 +1,8 @@
 "use client";
 
+import { Mail } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -15,6 +17,8 @@ interface UserProfileDialogProps {
   user: SearchUserResult | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** "쪽지 보내기" 버튼 클릭 핸들러 — 쪽지 작성 화면(/dm/compose)으로 이동시킨다 (§ROADMAP Phase 11) */
+  onSendDm: () => void;
 }
 
 const GENDER_LABEL: Record<"male" | "female", string> = {
@@ -26,7 +30,7 @@ const GENDER_LABEL: Record<"male" | "female", string> = {
  * 검색 결과 클릭 시 노출되는 프로필 다이얼로그.
  * 검색 결과에 이미 포함된 필드만 사용하므로 추가 쿼리 없이 즉시 표시된다.
  */
-export function UserProfileDialog({ user, open, onOpenChange }: UserProfileDialogProps) {
+export function UserProfileDialog({ user, open, onOpenChange, onSendDm }: UserProfileDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-sm">
@@ -59,6 +63,14 @@ export function UserProfileDialog({ user, open, onOpenChange }: UserProfileDialo
             <p className="text-muted-foreground text-center text-sm">
               {user.isOnline ? "현재 온라인" : "오프라인"}
             </p>
+
+            <Button
+              className="bg-brand hover:bg-brand/90 text-brand-foreground w-full gap-2 rounded-(--radius-card)"
+              onClick={onSendDm}
+            >
+              <Mail size={16} />
+              쪽지 보내기
+            </Button>
           </>
         )}
       </DialogContent>

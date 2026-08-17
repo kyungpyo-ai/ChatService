@@ -137,3 +137,24 @@ export function isSameLocalDate(a: string, b: string): boolean {
     dateA.getDate() === dateB.getDate()
   );
 }
+
+/**
+ * 쪽지함 목록의 짧은 날짜 표시 — 오늘이면 시각("오후 8:30"), 어제면 "어제", 그 이전이면
+ * "8월 15일". 방채팅의 formatChatTime/formatChatDate와 달리 목록 한 줄에 들어가야 해서
+ * 상대적 표현을 섞는다(§ROADMAP Phase 11 쪽지함 재설계).
+ */
+export function formatNoteDate(createdAt: string): string {
+  const now = new Date();
+
+  if (isSameLocalDate(createdAt, now.toISOString())) {
+    return formatChatTime(createdAt);
+  }
+
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+  if (isSameLocalDate(createdAt, yesterday.toISOString())) {
+    return "어제";
+  }
+
+  return new Date(createdAt).toLocaleDateString("ko-KR", { month: "long", day: "numeric" });
+}

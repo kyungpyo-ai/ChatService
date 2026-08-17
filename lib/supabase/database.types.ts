@@ -110,6 +110,64 @@ export type Database = {
         };
         Relationships: [];
       };
+      dm_notes: {
+        Row: {
+          content: string;
+          created_at: string;
+          hidden_by_recipient: boolean;
+          hidden_by_sender: boolean;
+          id: string;
+          read_at: string | null;
+          recipient_id: string;
+          reply_to_id: string | null;
+          sender_id: string;
+        };
+        Insert: {
+          content: string;
+          created_at?: string;
+          hidden_by_recipient?: boolean;
+          hidden_by_sender?: boolean;
+          id?: string;
+          read_at?: string | null;
+          recipient_id: string;
+          reply_to_id?: string | null;
+          sender_id: string;
+        };
+        Update: {
+          content?: string;
+          created_at?: string;
+          hidden_by_recipient?: boolean;
+          hidden_by_sender?: boolean;
+          id?: string;
+          read_at?: string | null;
+          recipient_id?: string;
+          reply_to_id?: string | null;
+          sender_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "dm_notes_recipient_id_fkey";
+            columns: ["recipient_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "dm_notes_reply_to_id_fkey";
+            columns: ["reply_to_id"];
+            isOneToOne: false;
+            referencedRelation: "dm_notes";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "dm_notes_sender_id_fkey";
+            columns: ["sender_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       guest_profiles: {
         Row: {
           id: string;
@@ -839,10 +897,10 @@ export type Database = {
       end_abandoned_random_sessions: { Args: never; Returns: undefined };
       end_random_session: { Args: { p_session_id: string }; Returns: undefined };
       heartbeat_random_session: {
-        Args: { p_session_id: string };
+        Args: { p_session_id: string; p_stale_seconds?: number };
         Returns: {
           ended_by: string;
-          partner_last_seen_at: string;
+          partner_stale: boolean;
           status: string;
         }[];
       };
@@ -850,6 +908,7 @@ export type Database = {
         Args: { p_room_id: string };
         Returns: undefined;
       };
+      hide_dm_note: { Args: { p_note_id: string }; Returns: undefined };
       is_admin: { Args: never; Returns: boolean };
       is_room_member: { Args: { p_room_id: string }; Returns: boolean };
       is_user_suspended: { Args: { p_user_id?: string }; Returns: boolean };
@@ -863,6 +922,7 @@ export type Database = {
       };
       leave_room: { Args: { p_room_id: string }; Returns: undefined };
       list_orphaned_chat_images: { Args: never; Returns: string[] };
+      mark_dm_note_read: { Args: { p_note_id: string }; Returns: undefined };
       match_or_wait: { Args: never; Returns: string };
       record_daily_activity: { Args: never; Returns: undefined };
       record_daily_stats_snapshot: { Args: never; Returns: undefined };
@@ -874,6 +934,14 @@ export type Database = {
       rooms_with_online_member: {
         Args: { p_room_ids: string[]; p_threshold: string };
         Returns: string[];
+      };
+      send_dm_note: {
+        Args: {
+          p_content: string;
+          p_recipient_id: string;
+          p_reply_to_id?: string;
+        };
+        Returns: string;
       };
     };
     Enums: {
