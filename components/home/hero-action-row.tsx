@@ -1,9 +1,7 @@
-"use client";
-
 import Link from "next/link";
-import { useLinkStatus } from "next/link";
-import { ChevronRight, Loader2, type LucideIcon } from "lucide-react";
+import { type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { NavPendingIcon } from "@/components/home/nav-pending-icon";
 
 interface HeroActionRowProps {
   href: string;
@@ -54,23 +52,7 @@ export function HeroActionRow({
           {subtitle}
         </p>
       </div>
-      <NavIcon isBrand={isBrand} />
+      <NavPendingIcon isBrand={isBrand} />
     </Link>
   );
-}
-
-/**
- * useLinkStatus는 부모 <Link>의 자식으로 렌더링된 컴포넌트에서만 pending 상태를 읽을 수 있다.
- * 클릭 즉시(네트워크 왕복 전) 스피너로 바뀌어야 "버튼이 반응했다"는 걸 바로 알 수 있다
- * (§실사용 피드백 — 버튼 클릭 후 아무 반응 없이 멈춘 것처럼 보이는 문제).
- */
-function NavIcon({ isBrand }: { isBrand: boolean }) {
-  const { pending } = useLinkStatus();
-  const className = isBrand ? "text-brand-foreground/80" : "text-muted-foreground";
-
-  if (pending) {
-    return <Loader2 size={20} className={cn("animate-spin", className)} />;
-  }
-
-  return <ChevronRight size={20} className={className} />;
 }
