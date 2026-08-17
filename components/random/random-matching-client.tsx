@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { ChatHeader } from "@/components/chat/chat-header";
@@ -22,7 +22,16 @@ export function RandomMatchingClient() {
   const isLeader = useSingleTabLock(MATCHING_LOCK_KEY);
 
   if (isLeader === null) {
-    return <div className="bg-surface-muted h-dvh" />;
+    // 탭 잠금 판정(Web Locks API) 대기 중에도 빈 화면 대신 헤더 + 매칭 인디케이터를 바로
+    // 보여줘 클릭이 즉시 반응한 것처럼 느껴지게 한다(§실사용 피드백).
+    return (
+      <div className="flex h-dvh flex-col">
+        <ChatHeader title="랜덤채팅" backHref="/" />
+        <div className="mx-auto flex w-full max-w-md flex-1 flex-col items-center px-4">
+          <MatchingIndicator />
+        </div>
+      </div>
+    );
   }
 
   if (!isLeader) {
@@ -50,6 +59,7 @@ function RandomMatchingClientActive() {
   const router = useRouter();
   const { sessionId, error } = useRandomMatching();
   const shownErrorRef = useRef<string | null>(null);
+  const [isCancelling, setIsCancelling] = useState(false);
 
   useEffect(() => {
     if (sessionId) {
@@ -64,8 +74,14 @@ function RandomMatchingClientActive() {
     }
   }, [error]);
 
-  const handleCancel = async () => {
-    await cancelRandomQueueAction();
+  const handleCancel = () => {
+    if (isCancelling) return;
+    // 취소 RPC 응답을 기다리지 않고 즉시 화면을 전환한다 — 클릭 반응이 네트워크 왕복(서울
+    // 리전이어도 수백ms)만큼 늦어 보이던 문제(§실사용 피드백). 언마운트 시 useRandomMatching의
+    // 클린업이 동일한 cancelRandomQueueAction을 베스트에포트로 다시 호출하므로(멱등), 여기서
+    // 결과를 기다리지 않고 fire-and-forget으로 던져도 대기열 정리는 보장된다.
+    setIsCancelling(true);
+    void cancelRandomQueueAction();
     router.push("/");
   };
 
@@ -80,8 +96,9 @@ function RandomMatchingClientActive() {
           variant="outline"
           className="w-full max-w-xs rounded-(--radius-card)"
           onClick={handleCancel}
+          disabled={isCancelling}
         >
-          매칭 취소
+          {isCancelling ? "취소하는 중..." : "매칭 취소"}
         </Button>
 
         <p className="text-muted-foreground mt-6 text-xs">TIP. 매너있는 대화는 모두가 즐거워요!</p>

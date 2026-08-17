@@ -1,6 +1,7 @@
 import Link from "next/link";
-import { ChevronRight, type LucideIcon } from "lucide-react";
+import { type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { NavPendingIcon } from "@/components/home/nav-pending-icon";
 
 interface HeroActionRowProps {
   href: string;
@@ -51,10 +52,7 @@ export function HeroActionRow({
           {subtitle}
         </p>
       </div>
-      <ChevronRight
-        size={20}
-        className={isBrand ? "text-brand-foreground/80" : "text-muted-foreground"}
-      />
+      <NavPendingIcon isBrand={isBrand} />
     </Link>
   );
 }

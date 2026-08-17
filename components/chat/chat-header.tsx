@@ -21,6 +21,11 @@ interface ChatHeaderProps {
   leaveLabel?: string;
   /** "더보기" 드롭다운의 "신고하기" 항목 클릭 핸들러 — 없으면 더보기 메뉴 자체가 숨겨진다 */
   onReport?: () => void;
+  /**
+   * 뒤로가기 버튼 클릭을 가로채고 싶을 때 사용 — 지정하면 backHref로의 기본 이동 대신
+   * 이 핸들러만 호출된다(예: 랜덤채팅에서 뒤로가기를 종료 버튼과 동일하게 처리).
+   */
+  onBackClick?: () => void;
 }
 
 /**
@@ -36,14 +41,27 @@ export function ChatHeader({
   onLeave,
   leaveLabel = "나가기",
   onReport,
+  onBackClick,
 }: ChatHeaderProps) {
   return (
     <header className="bg-surface/95 sticky top-0 z-30 flex h-14 items-center gap-2 border-b px-3 backdrop-blur">
-      <TransitionLink href={backHref} aria-label="뒤로가기">
-        <Button variant="ghost" size="icon" className="shrink-0">
+      {onBackClick ? (
+        <Button
+          variant="ghost"
+          size="icon"
+          className="shrink-0"
+          aria-label="뒤로가기"
+          onClick={onBackClick}
+        >
           <ChevronLeft size={20} />
         </Button>
-      </TransitionLink>
+      ) : (
+        <TransitionLink href={backHref} aria-label="뒤로가기">
+          <Button variant="ghost" size="icon" className="shrink-0">
+            <ChevronLeft size={20} />
+          </Button>
+        </TransitionLink>
+      )}
 
       <div className="min-w-0 flex-1">
         <p className="truncate font-semibold">{title}</p>
