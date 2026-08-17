@@ -1,7 +1,7 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import { Home, Shuffle, MessagesSquare, Search, UserRound } from "lucide-react";
+import { Home, Shuffle, MessagesSquare, Search, Mail, UserRound } from "lucide-react";
 import { TransitionLink } from "@/components/ui/transition-link";
 import { cn } from "@/lib/utils";
 
@@ -10,13 +10,19 @@ const NAV_ITEMS = [
   { href: "/random", label: "랜덤", icon: Shuffle },
   { href: "/rooms", label: "방 목록", icon: MessagesSquare },
   { href: "/search", label: "검색", icon: Search },
+  { href: "/dm", label: "쪽지", icon: Mail },
   { href: "/profile", label: "내 정보", icon: UserRound },
 ] as const;
 
+interface BottomNavProps {
+  /** 쪽지 탭에 표시할 안읽음 개수 — 0이면 배지를 표시하지 않는다 */
+  unreadDmCount?: number;
+}
+
 /**
- * 모바일 전용 하단 고정 5탭 네비게이션
+ * 모바일 전용 하단 고정 6탭 네비게이션
  */
-export function BottomNav() {
+export function BottomNav({ unreadDmCount = 0 }: BottomNavProps) {
   const pathname = usePathname();
 
   return (
@@ -32,7 +38,14 @@ export function BottomNav() {
               isActive ? "text-brand font-semibold" : "text-muted-foreground"
             )}
           >
-            <Icon size={20} />
+            <span className="relative">
+              <Icon size={20} />
+              {href === "/dm" && unreadDmCount > 0 && (
+                <span className="bg-destructive absolute -top-1 -right-2 flex h-3.5 min-w-3.5 items-center justify-center rounded-full px-0.5 text-[9px] font-semibold text-white">
+                  {unreadDmCount > 9 ? "9+" : unreadDmCount}
+                </span>
+              )}
+            </span>
             {label}
           </TransitionLink>
         );

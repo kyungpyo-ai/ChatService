@@ -1030,7 +1030,7 @@ no-ff merge, 프로덕션 배포 완료.
 
 ---
 
-## Phase 11 — 쪽지(DM) (재설계, 2026-08-17)
+## Phase 11 — 쪽지(DM) (재설계, 2026-08-17, 구현 완료)
 
 > ⚠️ **1차 설계 폐기 및 재설계**: 처음엔 "1:1 영구 대화(채팅 스레드)" 형태로 설계·구현했으나
 > (`feature/dm` 브랜치, 커밋 `7aed535`), 사용자 확인 결과 실제로 원한 것은 **포털 사이트류
@@ -1081,18 +1081,42 @@ no-ff merge, 프로덕션 배포 완료.
 
 ### 폐기 처리 (1차 설계 롤백)
 
-- [ ] `feature/dm` 브랜치의 1차 구현 커밋은 참고용으로만 남기고 main엔 merge하지 않음
+- [x] `feature/dm` 브랜치의 1차 구현 커밋은 참고용으로만 남기고 main엔 merge하지 않음
       (로컬 main은 이미 merge 전 상태로 reset 완료, origin/main엔 애초에 push 안 됨)
-- [ ] 원격 Supabase(`rhtjdbgjpoucpwkfalxp`)에 적용된 1차 마이그레이션
+- [x] 원격 Supabase(`rhtjdbgjpoucpwkfalxp`)에 적용된 1차 마이그레이션
       (`20260817000000_create_dm_conversations_and_extend_messages.sql`,
       `20260817010000_revoke_execute_on_dm_last_message_trigger_function.sql`) 되돌리는
       롤백 마이그레이션 추가 — `dm_conversations` 테이블 drop, `messages.dm_conversation_id`
       컬럼/제약/정책/트리거 제거, `exactly_one_context`를 2-way로 원복
+      (`supabase/migrations/20260817020000_rollback_dm_conversations_thread_design.sql`)
 
-### 착수 전 확인 필요
+### 구현 항목 (2026-08-17, `feature/dm-mailbox` 브랜치)
 
-- [ ] 답장(reply)의 정확한 UX(쪽지 상세 화면에서 답장 vs 목록에서 바로 답장) 착수 시 결정
-- [ ] 상세 태스크는 착수 시 `DEVELOPMENT_PLAN.md`에 분해
+- [x] DB: `dm_notes` 테이블 신설(`sender_id`/`recipient_id`/`content`/`reply_to_id` 자기참조/
+      `read_at`/`hidden_by_sender`/`hidden_by_recipient`) — "대화" 그룹 개념 없이 쪽지 한 통이
+      각각 독립된 행
+- [x] RLS: 발신자/수신자 본인만 조회 가능, 쓰기는 전부 SECURITY DEFINER 함수 경유
+      (`send_dm_note`/`mark_dm_note_read`/`hide_dm_note`) — 클라이언트 직접 INSERT/UPDATE 차단
+- [x] `send_dm_note()` — 로그인/게스트/정지/자기자신/수신자 존재/답장 대상 참여 여부 재검증
+- [x] `mark_dm_note_read()` — 수신자 본인만 자신에게 온 쪽지를 읽음 처리
+- [x] `hide_dm_note()` — 호출자가 발신자면 `hidden_by_sender`만, 수신자면
+      `hidden_by_recipient`만 갱신(소프트 삭제, 상대 쪽 사본에는 영향 없음)
+- [x] 쪽지함 통합 목록(`app/(main)/dm/page.tsx` + `components/dm/dm-note-list.tsx`) — 방향
+      아이콘(받음/보냄), 안읽음 강조 + 점 표시, "..." 메뉴로 항목별 삭제(낙관적 UI)
+- [x] 쪽지 상세/답장 화면(`app/(main)/dm/[noteId]/page.tsx` +
+      `components/dm/dm-note-detail.tsx`) — 편지 형태 레이아웃(발신자 카드 + 본문 + 원본
+      인용), 상세 열람 시 자동 읽음 처리, 답장은 원본을 참조하는 새 쪽지 1건을 보내고 목록으로
+      복귀(대화창처럼 이어지지 않음)
+- [x] 새 쪽지 작성 화면(`app/(main)/dm/compose/page.tsx` + `components/dm/dm-compose-form.tsx`)
+      — 검색 결과/프로필 다이얼로그의 "쪽지 보내기"가 `/dm/compose?to={userId}`로 바로 연결
+- [x] 네비게이션 "쪽지" 탭(`bottom-nav.tsx`/`sidebar-nav.tsx`) + 안읽음 개수 배지 —
+      `(main)/layout.tsx`가 `getDmUnreadCount()`를 렌더마다 조회해 전달(실시간 구독 없이,
+      쪽지 관련 서버 액션의 `revalidatePath("/", "layout")`로 갱신)
+
+### 착수 전 확인 필요 (해결됨)
+
+- [x] 답장(reply) UX: 쪽지 상세 화면 안에서 "답장하기" 버튼 → 인라인 textarea로 결정.
+      목록에서 바로 답장하는 UI는 만들지 않음(상세를 먼저 읽어야 원본 맥락을 알 수 있으므로).
 
 **연관 PRD**: 없음(Phase 10에서 승격된 신규 범위 — PRD.md에 추가 필요)
 
@@ -1120,3 +1144,4 @@ no-ff merge, 프로덕션 배포 완료.
 | 9 | 배포 | 핵심 항목 완료(법률 검토·계정 초기화·커스텀 도메인 대기) |
 | 9.1 | 배포 후 실사용 버그 수정 + 랜덤채팅 이탈 감지 개선 | 완료 |
 | 10 | 후속 검토 (범위 외) | 미착수 |
+| 11 | 쪽지(DM, 쪽지함 재설계) | 완료 |

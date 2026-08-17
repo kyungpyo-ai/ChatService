@@ -1549,6 +1549,98 @@ Phase 7.7 작업 이전에 이미 닉네임을 설정해둔 기존 계정은 이
 
 `ROADMAP.md` Phase 10 참고. MVP 범위 밖이므로 상세화하지 않는다.
 
+## Phase 11 — 쪽지(DM, 쪽지함) (상세, 2026-08-17 구현 완료)
+
+로그인 회원 간 단발성 쪽지. **1차 설계("1:1 영구 대화" — `feature/dm` 브랜치, 커밋
+`7aed535`)는 폐기됐다** — 사용자가 실제로 원한 것은 포털 사이트류 "쪽지함"(낱개의 독립된
+쪽지, 대화 스레드가 아님)이었다. 원격 Supabase에 적용됐던 1차 마이그레이션도
+`20260817020000_rollback_dm_conversations_thread_design.sql`로 되돌렸다. 아래는 재설계된
+쪽지함의 실제 구현 내역이다. 확정 요구사항은 `ROADMAP.md` Phase 11 참고.
+
+### DB 설계
+
+1차 설계가 `messages` 테이블을 확장하는 방식이었던 것과 달리, 이번엔 "대화" 그룹 개념
+자체가 없으므로 **완전히 독립된 전용 테이블** `dm_notes`로 새로 만들었다.
+
+- **`dm_notes`** — `id`, `sender_id`/`recipient_id`(`profiles(id)` 참조, `on delete cascade`),
+  `content`(1~2000자), `reply_to_id`(자기 자신을 참조하는 nullable FK, `on delete set null`),
+  `read_at`(nullable — 수신자가 읽으면 채워짐), `hidden_by_sender`/`hidden_by_recipient`(각자
+  자기 쪽에서만 소프트 삭제), `created_at`. `sender_id <> recipient_id` 체크로 자기 자신에게
+  보내는 것을 DB 레벨에서도 막는다.
+- **RLS**: `auth.uid() in (sender_id, recipient_id)`인 행만 SELECT 가능 — 소프트 삭제
+  플래그는 RLS가 아니라 애플리케이션 쿼리(`lib/queries/dm.ts`)에서 필터링한다. RLS에서까지
+  숨기면 "내가 지워도 상대 쪽 사본은 유지"라는 요구사항 자체가 깨진다(상대는 여전히 그 행을
+  봐야 하므로). INSERT/UPDATE/DELETE는 `authenticated`에서 전부 revoke하고 SECURITY DEFINER
+  함수로만 가능하게 했다.
+- **`send_dm_note(p_recipient_id, p_content, p_reply_to_id)`** — 로그인 여부·자기 자신 여부·
+  게스트(`profiles`에 없음) 여부·수신자 존재 여부·정지 계정 여부를 전부 재검증. `reply_to_id`가
+  있으면 호출자가 그 원본 쪽지의 참여자(발신 또는 수신)인지 확인해, 임의의 남의 쪽지를 답장
+  대상으로 조작해 참조하지 못하게 막는다.
+- **`mark_dm_note_read(p_note_id)`** — 수신자 본인이 자신에게 온 쪽지만 읽음 처리.
+- **`hide_dm_note(p_note_id)`** — 호출자가 발신자면 `hidden_by_sender`만, 수신자면
+  `hidden_by_recipient`만 갱신 — 방 나가기(`leave_room`)와 동일한 "나만 안 보이게" 개념으로,
+  실제 행 DELETE는 하지 않는다.
+
+마이그레이션: `supabase/migrations/20260817020000_rollback_dm_conversations_thread_design.sql`
+(1차 설계 롤백), `20260817030000_create_dm_notes_mailbox.sql`(신규 구현).
+
+### 애플리케이션 계층
+
+- **`lib/queries/dm.ts`** — `getDmNoteList(userId)`(보낸/받은 쪽지를 하나로 합쳐 최신순 정렬,
+  소프트 삭제 필터링, 상대 프로필 배치 조회), `getDmUnreadCount(userId)`(네비 배지용, RLS만으로
+  충분해 별도 DB 함수 없이 일반 select), `getDmNoteDetail(noteId, viewerId)`(참여자 검증 +
+  답장인 경우 원본 미리보기까지 조회).
+- **`app/actions/dm.ts`** — `sendDmNoteAction`(신규 발송/답장 공용, `p_reply_to_id` 유무로
+  구분), `markDmNoteReadAction`, `hideDmNoteAction`. 셋 다 `revalidatePath("/", "layout")`을
+  호출해 (main) 레이아웃 전체(안읽음 배지 포함)를 재검증한다 — 실시간 구독 대신 이 방식으로
+  "배지 갱신 정도만 고려"라는 요구사항을 충족한다.
+- **화면**:
+  - `app/(main)/dm/page.tsx` + `components/dm/dm-note-list.tsx` — 받은함/보낸함 탭 분리 없이
+    통합 목록. 방향은 `ArrowDownLeft`(받음)/`ArrowUpRight`(보냄) 아이콘으로만 구분하고,
+    안읽음은 굵은 글씨 + 점으로 강조한다. 항목의 "..." 메뉴에서 삭제하면 낙관적으로 목록에서
+    즉시 제거하고, 실패 시 롤백한다.
+  - `app/(main)/dm/[noteId]/page.tsx` + `components/dm/dm-note-detail.tsx` — 채팅 버블이
+    아니라 편지 형태(발신자 카드 + 본문 + 답장 대상이면 원본 인용 블록)로 구성했다. 마운트
+    시 받은 쪽지면 1회 자동 읽음 처리. "답장하기" 버튼을 누르면 인라인 textarea가 나타나고,
+    전송하면 새 쪽지 1건을 만들고 목록으로 돌아간다 — 이 화면 자체가 이어지는 대화창이 되지
+    않는다(요구사항의 핵심 차이점).
+  - `app/(main)/dm/compose/page.tsx` + `components/dm/dm-compose-form.tsx` — 검색 결과/
+    프로필 다이얼로그의 "쪽지 보내기"가 여기로 연결된다. "대화 시작" 개념이 없으므로 서버
+    액션 호출 없이 그냥 `/dm/compose?to={userId}`로 라우팅만 하면 된다(1차 설계의
+    `startOrGetDmConversationAction` 같은 조회/생성 단계가 아예 필요 없어졌다).
+- **네비게이션**: `bottom-nav.tsx`/`sidebar-nav.tsx`에 "쪽지" 탭 추가, `unreadDmCount` prop을
+  받아 0보다 크면 배지를 표시한다. `(main)/layout.tsx`가 `getDmUnreadCount()`를 렌더마다
+  호출해 두 컴포넌트에 전달 — Server Component가 매 네비게이션마다 다시 실행되는 게 아니라
+  캐시될 수 있다는 점을 고려해, 위 세 서버 액션이 `revalidatePath("/", "layout")`로 강제
+  재검증한다.
+
+### 1차 설계 대비 달라진 점 (요약)
+
+| 항목 | 1차 설계(폐기) | 재설계(구현) |
+|---|---|---|
+| 데이터 모델 | `dm_conversations` + `messages` 3-way 확장 | 전용 테이블 `dm_notes` 1개 |
+| 단위 | 대화(스레드) | 쪽지 1건(독립 행) |
+| 목록 | 대화 목록(상대별 1행, 마지막 메시지 미리보기) | 쪽지 목록(항목별 1행, 방향 아이콘) |
+| 진입점 동작 | `startOrGetDmConversationAction` 호출 후 대화로 이동 | 바로 `/dm/compose`로 라우팅 |
+| 실시간성 | Realtime 즉시 전달(`useDmMessages`) | 불필요 — 조회 + `revalidatePath` |
+| 읽음/삭제 | 개념 없음 | 항목 단위 읽음(`read_at`) + 소프트 삭제(`hidden_by_*`) |
+| 화면 형태 | 채팅 버블 | 편지 형태(카드 + 본문 + 원본 인용) |
+
+### 검증
+
+- `npm run typecheck` / `npm run lint` 통과(기존에도 있던 무관한
+  react-hooks/incompatible-library 경고 2건 제외).
+- `npm run build`(`next build`) 성공, `/dm`·`/dm/[noteId]`·`/dm/compose` 라우트가 정상
+  등록됨을 확인.
+- `mcp__supabase__get_advisors(security)`로 `dm_notes`/3개 함수 점검 — ERROR 0건. WARN은
+  `send_dm_note`/`mark_dm_note_read`/`hide_dm_note`가 `authenticated`에게 RPC로 직접 호출
+  가능하다는 것(의도된 설계 — 클라이언트가 실제로 호출해야 하는 함수들이라 기존
+  `join_room`/`kick_member`와 동일한 패턴)과, 이 프로젝트의 익명 로그인 활성화로 인한
+  `to authenticated` 정책 전체의 기존 경고 패턴뿐이다.
+- 원격 DB에서 `dm_conversations` 테이블 부재, `messages.dm_conversation_id` 컬럼 부재,
+  `exactly_one_context`가 2-way로 원복된 것을 SQL로 직접 확인한 뒤 착수했다(롤백이 실제로
+  적용됐는지 재검증).
+
 ---
 
-*— End of DEVELOPMENT_PLAN (Phase 2 상세, 이후 Phase는 착수 시 갱신) —*
+*— End of DEVELOPMENT_PLAN (Phase 2, 11 상세, 이후 Phase는 착수 시 갱신) —*

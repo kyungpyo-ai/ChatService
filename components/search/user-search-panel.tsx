@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useDebouncedCallback } from "use-debounce";
 import { SearchInput } from "@/components/search/search-input";
 import { RecentSearchChips } from "@/components/search/recent-search-chips";
@@ -25,6 +26,7 @@ export function UserSearchPanel({ currentUserId }: { currentUserId: string }) {
   // 확실히 전달하고 있음을 타입으로 보장하기 위해 prop으로 계속 받는다.
   void currentUserId;
 
+  const router = useRouter();
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchUserResult[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -88,6 +90,13 @@ export function UserSearchPanel({ currentUserId }: { currentUserId: string }) {
     setRecentSearches([]);
   };
 
+  // "쪽지 보내기" — 대화 개념이 없는 쪽지함이므로(§ROADMAP Phase 11 재설계) 별도 서버 액션
+  // 호출 없이 작성 화면으로 바로 이동한다. 로그인/게스트/자기자신 검증은 그 화면과
+  // sendDmNoteAction이 담당한다.
+  const handleSendDm = (targetUserId: string) => {
+    router.push(`/dm/compose?to=${targetUserId}`);
+  };
+
   const trimmedQuery = query.trim();
   const showEmptyQueryHint = trimmedQuery.length < MIN_QUERY_LENGTH;
 
@@ -127,6 +136,7 @@ export function UserSearchPanel({ currentUserId }: { currentUserId: string }) {
                 key={user.id}
                 user={user}
                 onClick={() => setSelectedUser(user)}
+                onSendDm={() => handleSendDm(user.id)}
               />
             ))}
           </div>
@@ -139,6 +149,7 @@ export function UserSearchPanel({ currentUserId }: { currentUserId: string }) {
         onOpenChange={(open) => {
           if (!open) setSelectedUser(null);
         }}
+        onSendDm={() => selectedUser && handleSendDm(selectedUser.id)}
       />
     </div>
   );
