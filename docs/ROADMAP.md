@@ -883,17 +883,19 @@ stretch가 깨지는 레벨)을 함께 적용해 해결했다. 375px/320px 뷰�
 ## Phase 9 — 배포 (핵심 항목 완료, 2026-08-16 기준 프로덕션 운영 중)
 
 Vercel 배포 자체는 완료되어 `chat-service-*.vercel.app`에서 실제 운영 중이다. 커스텀 도메인
-(`www.sudaon.com`) 연결과 아래 두 항목(법적 검토, 계정 초기화)만 정식 오픈 전 남아있다.
+(`www.sudaon.com`) 연결(도메인 구매 진행 중, 2026-08-17)과 Phase 7.7 법적 검토만 정식 오픈
+전 남아있다. 계정 초기화는 완료(2026-08-17).
 
 - [ ] **Phase 7.7(법적/규정 준수) 필수 항목 완료 확인 — 실제 사용자에게 공개하기 전 반드시 선행**
-- [ ] **배포(정식 오픈) 전 남아있는 테스트/개발용 계정 전부 삭제** (2026-08-15 결정) —
+- [x] **배포(정식 오픈) 전 남아있는 테스트/개발용 계정 전부 삭제** (완료, 2026-08-17) —
       §Phase 7.7 ①+② 관문(약관 동의 포함 setup-profile)은 "닉네임 없는 로그인 사용자"만
       거치도록 되어 있어, Phase 7.7 작업 이전에 만들어진 기존 계정(`kyu275` 등 개발 중
       테스트로 만든 계정 전부)은 약관 동의를 받은 적이 없다. 아직 서비스를 실제로 운영
       중이 아니므로 별도의 기존 사용자 백필 로직을 만들지 않기로 결정 — 대신 배포 시점에
       남아있는 모든 계정(auth.users)을 삭제해 초기화한다. 이렇게 하면 배포 이후 생기는
       모든 계정은 예외 없이 신규 가입 경로(=약관 동의 관문)를 거치게 되어 별도 마이그레이션
-      없이 문제가 해소된다. (`scripts/reset-accounts-for-launch.mjs` 준비만 해두고 미실행)
+      없이 문제가 해소된다. Supabase MCP로 `public` 스키마 전 테이블 truncate + `auth.users`
+      전체 삭제 실행, 0건 확인 완료(`scripts/reset-accounts-for-launch.mjs`는 결국 미사용).
 - [x] Vercel 프로젝트 연결 및 환경 변수 설정
 - [x] Auth·DB·Realtime·Storage 연결 정상 확인 — Playwright 스모크 테스트로 검증
 - [x] Vercel Cron 등록 — `cleanup-chat-images` (`vercel.ts`, 매일 KST 새벽 4시)
@@ -976,6 +978,43 @@ Supabase/Vercel 무료 플랜 영향도를 계산했다. Supabase DB 자체는(�
 모두 실제 프로덕션/Preview 배포 환경에서 Playwright + 두 브라우저(로컬 Playwright ↔ 실사용자
 PC)로 교차 검증했고, Supabase `get_logs`/직접 SQL 조회로 DB 타임스탬프까지 대조해 원인을
 확정했다.
+
+---
+
+## Phase 9.2 — 응답 속도/클릭 반응 개선 및 랜덤채팅 종료 UX 정리 (완료, 2026-08-17)
+
+"페이지 진입/랜덤채팅 시작/매칭취소가 느리다"는 실사용 피드백을 조사해 반영했다.
+
+**① Vercel 함수 리전을 서울(icn1)로 고정**: Supabase 프로젝트는 서울(ap-northeast-2)인데
+`vercel.ts`에 리전 설정이 없어 함수가 기본 리전(미국)에서 실행되고 있었다. 미들웨어의
+`getClaims()`, Server Action의 RPC 호출마다 태평양을 왕복하며 지연이 누적된 것이 원인 —
+`vercel.ts`에 `regions: ["icn1"]` 추가로 해결.
+
+**② 버튼 클릭 즉시 반응하는 피드백 추가**: 리전 수정 이후에도 "버튼을 눌렀을 때 바로 뭔가
+동작해야 한다"는 요청이 이어져 체감 반응성을 별도로 개선했다 — 홈 화면 CTA는
+`next/link`의 `useLinkStatus`로 네트워크 응답 전에 스피너 표시, 매칭취소는 취소 RPC 응답을
+기다리지 않고 즉시 화면 전환(취소 자체는 `useRandomMatching`의 언마운트 클린업이 멱등하게
+재시도), `/random` 진입 시 탭 잠금 판정 중에도 빈 화면 대신 헤더+매칭 인디케이터를 바로 표시.
+
+이 과정에서 홈 화면 500 에러 1건 발생·즉시 수정: `HeroActionRow` 전체를 `"use client"`로
+바꾸면서 Server Component(`app/(main)/page.tsx`)가 넘기는 `icon` prop(Lucide 컴포넌트,
+즉 함수)이 서버-클라이언트 경계를 건너가며 직렬화 불가로 렌더링이 죽었다. `useLinkStatus`가
+필요한 부분만 `components/home/nav-pending-icon.tsx`로 분리(직렬화 가능한 `isBrand: boolean`만
+전달)하고 `HeroActionRow`는 Server Component로 되돌려 해결. Playwright로 Preview 배포에서
+재현 후 재검증했다.
+
+**③ 랜덤채팅 종료 흐름 단순화**: "종료" 버튼에 있던 확인 다이얼로그(`EndSessionDialog`)를
+제거해 클릭 즉시 종료되도록 바꾸고, 상단 뒤로가기(`< 익명과의 대화`)도 대화가 진행 중이면
+종료 버튼과 동일하게 즉시 종료 처리하도록 통일했다(이미 종료된 뒤라면 기존처럼 홈으로 이동).
+`ChatHeader`에 `onBackClick` prop을 추가해 뒤로가기 클릭을 가로챌 수 있게 했고, 방채팅은
+기존 `backHref` 기본 동작 그대로 영향 없음.
+
+**④ 배포 전 테스트 데이터 초기화**: 이 세션의 Playwright 테스트로 쌓인 데이터를 포함해
+Supabase MCP로 `public` 스키마 전 테이블 truncate + `auth.users` 전체 삭제 실행 — 위
+"배포(정식 오픈) 전 남아있는 테스트/개발용 계정 전부 삭제" 항목과 동일 작업.
+
+`perf/vercel-seoul-region` 브랜치로 작업해 Preview에서 Playwright로 재현·검증 후 `main`에
+no-ff merge, 프로덕션 배포 완료.
 
 ---
 
