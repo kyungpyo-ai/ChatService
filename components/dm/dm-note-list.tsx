@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { TransitionLink } from "@/components/ui/transition-link";
 import { hideDmNoteAction } from "@/app/actions/dm";
+import { triggerDmBadgeResync } from "@/lib/realtime/dm-badge-bus";
 import { formatNoteDate } from "@/lib/utils/date";
 import { showError } from "@/lib/utils/toast";
 import { cn } from "@/lib/utils";
@@ -43,9 +44,10 @@ export function DmNoteList({ notes: initialNotes }: DmNoteListProps) {
     }
 
     // 로컬에서는 낙관적으로 목록에서만 지웠을 뿐이다 — 삭제한 쪽지가 안읽음 상태였다면
-    // 네비게이션 배지도 갱신되어야 하므로, 서버 액션의 revalidatePath만 믿지 않고
-    // router.refresh()로 현재 라우트(레이아웃 포함)를 명시적으로 다시 가져온다
-    // (§components/dm/dm-note-detail.tsx와 동일한 이유, 실사용 확인 2026-08-17).
+    // 네비게이션 배지도 갱신되어야 한다. router.refresh()/revalidatePath만으로는 반영
+    // 타이밍이 보장되지 않아(§실사용 확인 2026-08-18) triggerDmBadgeResync()로도 직접
+    // 신호를 보낸다(§components/dm/dm-note-detail.tsx와 동일한 이유).
+    triggerDmBadgeResync();
     router.refresh();
   };
 

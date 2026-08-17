@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { TransitionLink } from "@/components/ui/transition-link";
 import { markDmNoteReadAction, sendDmNoteAction } from "@/app/actions/dm";
+import { triggerDmBadgeResync } from "@/lib/realtime/dm-badge-bus";
 import { formatChatDate, formatChatTime } from "@/lib/utils/date";
 import { showError, showSuccess } from "@/lib/utils/toast";
 import type { DmNoteDetail } from "@/lib/queries/dm";
@@ -28,15 +29,18 @@ export function DmNoteDetailView({ note }: DmNoteDetailViewProps) {
   const [sending, setSending] = useState(false);
   const markedAsReadRef = useRef(false);
 
-  // 받은 쪽지를 열람하면 1회만 읽음 처리한다. 서버 액션이 revalidatePath("/", "layout")를
-  // 호출하긴 하지만, 그것만으로 지금 화면이 확실히 다시 렌더링된다는 보장이 약해(§실사용 확인
-  // 2026-08-17, "읽었는데도 배지가 안 사라질 때가 있음") 성공 시 router.refresh()를 명시적으로
-  // 호출해 현재 라우트의 서버 컴포넌트 트리(레이아웃의 안읽음 배지 포함)를 강제로 다시 가져온다.
+  // 받은 쪽지를 열람하면 1회만 읽음 처리한다. 서버 액션의 revalidatePath("/", "layout")와
+  // router.refresh()만으로는 반영 타이밍이 항상 보장되지 않아(§실사용 확인 2026-08-18,
+  // "읽었는데도 배지가 안 사라질 때가 있음") triggerDmBadgeResync()로 useDmUnreadBadge에
+  // "지금 당장 다시 세줘"라는 신호를 직접 보낸다(§lib/realtime/dm-badge-bus.ts).
+  // router.refresh()는 그대로 유지 — 이 화면 자체가 다시 그려질 다른 서버 데이터가 있을 수
+  // 있으니 그것과는 별개로 필요하다.
   useEffect(() => {
     if (note.direction === "received" && !markedAsReadRef.current) {
       markedAsReadRef.current = true;
       void markDmNoteReadAction(note.id).then((result) => {
         if (result.success) {
+          triggerDmBadgeResync();
           router.refresh();
         }
       });
