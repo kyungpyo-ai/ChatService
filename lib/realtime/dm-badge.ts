@@ -106,34 +106,37 @@ export function useDmUnreadBadge(initialCount: number, userId: string | null): n
     void resync();
 
     const supabase = createClient();
-    let channel: ReturnType<typeof supabase.channel> | null = null;
-    let cancelled = false;
 
-    (async () => {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (cancelled) return;
+    // 채널 생성·구독은 effect 본문에서 곧바로(동기적으로) 실행한다 — 예전에는
+    // `await supabase.auth.getSession()` 뒤에야 채널을 만들었는데, 이 await가 끝나기 전에
+    // 컴포넌트가 다시 언마운트되면(`cancelled` 가드에 걸려) 채널 자체가 한 번도 만들어지지
+    // 않은 채 조용히 넘어갔다 — "이번 마운트에서는 재구독 자체가 아예 안 열리는" 레이스였다
+    // (§실사용 확인 2026-08-18, "새로고침하면 다시 빨라진다"가 결정적 단서: 새로고침은 항상
+    // 이 await 경쟁 없이 깨끗하게 마운트되지만, `/random` 왕복 같은 SPA 네비게이션은 이
+    // effect가 아주 짧게 mount→unmount→mount될 수 있어 await 도중 취소되는 경우가 있었다).
+    // `setAuth()`는 구독 이후에 호출해도 소켓에 그대로 반영되므로, 구독을 먼저 걸고 세션
+    // 토큰은 비동기로 뒤따라 붙인다.
+    const channel = supabase
+      .channel(`dm-badge-${userId}-${channelSuffixRef.current}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "dm_notes",
+          filter: `recipient_id=eq.${userId}`,
+        },
+        () => {
+          setCount((prev) => prev + 1);
+        }
+      )
+      .subscribe();
+
+    void supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) {
         supabase.realtime.setAuth(session.access_token);
       }
-
-      channel = supabase
-        .channel(`dm-badge-${userId}-${channelSuffixRef.current}`)
-        .on(
-          "postgres_changes",
-          {
-            event: "INSERT",
-            schema: "public",
-            table: "dm_notes",
-            filter: `recipient_id=eq.${userId}`,
-          },
-          () => {
-            setCount((prev) => prev + 1);
-          }
-        )
-        .subscribe();
-    })();
+    });
 
     // 토큰 자동 갱신 시 Realtime 클라이언트에도 새 토큰을 다시 전달한다(위 주석 참고) —
     // 이걸 안 하면 세션이 오래 유지될수록(토큰 만료 주기마다) 구독이 조용히 무력화된다.
@@ -159,14 +162,11 @@ export function useDmUnreadBadge(initialCount: number, userId: string | null): n
     const resyncTimer = setInterval(() => void resync(), RESYNC_INTERVAL_MS);
 
     return () => {
-      cancelled = true;
       document.removeEventListener("visibilitychange", handleVisibility);
       clearInterval(resyncTimer);
       unsubscribeBus();
       authSubscription.unsubscribe();
-      if (channel) {
-        supabase.removeChannel(channel);
-      }
+      supabase.removeChannel(channel);
     };
   }, [userId, resync]);
 
