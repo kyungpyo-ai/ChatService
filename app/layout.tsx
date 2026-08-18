@@ -4,6 +4,10 @@ import { ThemeProvider } from "next-themes";
 import { Toaster } from "@/components/ui/sonner";
 import { VersionWatcher } from "@/components/version-watcher";
 import { getBuildVersion } from "@/lib/utils/build-version";
+import { createClient } from "@/lib/supabase/server";
+import { getUserProfile } from "@/lib/queries/profile";
+import { getDmUnreadCount } from "@/lib/queries/dm";
+import { DmBadgeProvider } from "@/components/dm/dm-badge-provider";
 import "./globals.css";
 
 const defaultUrl =
@@ -23,11 +27,23 @@ const geistSans = Geist({
   subsets: ["latin"],
 });
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // 쪽지함 안읽음 배지 Realtime 구독을 앱 최상위에 딱 한 번만 마운트하기 위한 초기값 계산
+  // (§lib/realtime/dm-badge.ts, §components/dm/dm-badge-provider.tsx 참고 — route group을
+  // 오가도 이 구독이 절대 언마운트되지 않아야 하는 이유가 문서화돼 있다). 게스트(익명 세션)는
+  // profiles가 아니라 guest_profiles에 저장되므로(§CLAUDE.md) profile 존재 여부로 판단한다.
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const profile = user ? await getUserProfile(user.id) : null;
+  const dmUserId = profile ? user!.id : null;
+  const initialDmUnreadCount = dmUserId ? await getDmUnreadCount(dmUserId) : 0;
+
   return (
     <html lang="ko" suppressHydrationWarning>
       <body className={`${geistSans.className} antialiased`}>
@@ -37,7 +53,9 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          {children}
+          <DmBadgeProvider userId={dmUserId} initialCount={initialDmUnreadCount}>
+            {children}
+          </DmBadgeProvider>
           <Toaster />
           <VersionWatcher initialVersion={getBuildVersion()} />
         </ThemeProvider>
