@@ -145,6 +145,18 @@ export function useDmUnreadBadge(initialCount: number, userId: string | null): n
         console.log("[dm-badge-debug] setAuth done", mySuffix);
       }
 
+      console.log(
+        "[dm-badge-debug] realtime connectionState=",
+        supabase.realtime.connectionState(),
+        "isConnected=",
+        supabase.realtime.isConnected(),
+        mySuffix
+      );
+      if (!supabase.realtime.isConnected()) {
+        console.log("[dm-badge-debug] forcing realtime.connect()", mySuffix);
+        supabase.realtime.connect();
+      }
+
       console.log("[dm-badge-debug] before channel().subscribe()", mySuffix);
       const newChannel = supabase
         .channel(`dm-badge-${userId}-${channelSuffixRef.current}`)
