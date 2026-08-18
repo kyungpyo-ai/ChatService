@@ -6,9 +6,12 @@ import { getDmUnreadCountAction } from "@/app/actions/dm";
 import { subscribeDmBadgeResync } from "@/lib/realtime/dm-badge-bus";
 import { generateTempId } from "@/lib/utils/temp-id";
 
-// 배지 하나 세는 용도라 방채팅 하트비트(5~10초)처럼 자주 돌 필요는 없지만, "실시간이 조용히
-// 죽어도 최대 이 정도면 맞는 값으로 돌아온다"는 안전망이므로 60초에서 20초로 좁혔다.
-const RESYNC_INTERVAL_MS = 20_000;
+// 배지 하나 세는 용도라 방채팅 하트비트(5~10초)처럼 자주 돌 필요는 없다. 재마운트 시
+// realtime 재구독이 실패하던 근본 원인(소켓 자동 재연결 경쟁)은 배지 구독을 앱 최상위에서
+// 절대 언마운트되지 않게 만들어 해결했으므로(§components/dm/dm-badge-provider.tsx), 이
+// 폴링은 다시 순수 "혹시 모를 안전망"으로 돌아간다 — 로그인 중 모든 페이지에서 도는 만큼
+// Vercel 함수 호출량을 아끼기 위해 60초로 되돌린다(§실사용 확인 2026-08-19).
+const RESYNC_INTERVAL_MS = 60_000;
 
 /**
  * 쪽지함 안읽음 배지 실시간 갱신 (§ROADMAP Phase 11 후속 개선)
