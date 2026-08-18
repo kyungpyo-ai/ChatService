@@ -6,9 +6,10 @@ import { getDmUnreadCountAction } from "@/app/actions/dm";
 import { subscribeDmBadgeResync } from "@/lib/realtime/dm-badge-bus";
 import { generateTempId } from "@/lib/utils/temp-id";
 
-// 배지 하나 세는 용도라 방채팅 하트비트(5~10초)처럼 자주 돌 필요는 없다 — 안전망이므로
-// 60초면 충분하다(§실사용 확인 2026-08-17, "될 때도 있고 안 될 때도 있다"는 증상의 안전망).
-const RESYNC_INTERVAL_MS = 60_000;
+// 배지 하나 세는 용도라 방채팅 하트비트(5~10초)처럼 자주 돌 필요는 없지만, 아래 "마운트 시점
+// 즉시 재동기화" 안전망을 뒷받침하기 위해 60초에서 20초로 좁혔다(§실사용 확인 2026-08-18,
+// Playwright로 WebSocket 프레임을 직접 캡처해 확인한 내용 참고).
+const RESYNC_INTERVAL_MS = 20_000;
 
 /**
  * 쪽지함 안읽음 배지 실시간 갱신 (§ROADMAP Phase 11 후속 개선)
@@ -19,38 +20,52 @@ const RESYNC_INTERVAL_MS = 60_000;
  * (`lib/realtime/messages.ts`, `lib/realtime/random.ts`)과 동일한 postgres_changes INSERT
  * 패턴을 재사용한다.
  *
- * "정확한 카운트로 재동기화"는 네 경로로 이루어진다:
- * 1. 페이지 이동/새로고침으로 레이아웃이 다시 렌더되면 서버가 계산한 새 `initialCount`를
+ * "정확한 카운트로 재동기화"는 다섯 경로로 이루어진다:
+ * 1. **마운트 시점 즉시 1회** `getDmUnreadCountAction()` 호출(아래 "왜 마운트 시점에 즉시
+ *    재동기화하는가" 참고 — 가장 중요한 안전망).
+ * 2. 페이지 이동/새로고침으로 레이아웃이 다시 렌더되면 서버가 계산한 새 `initialCount`를
  *    받아, 렌더 도중 state를 조정하는 패턴으로 로컬 state를 되돌린다.
- * 2. 읽음 처리/삭제 성공 시 `lib/realtime/dm-badge-bus.ts`를 통해 오는 즉시 신호로
- *    `getDmUnreadCountAction()`을 바로 호출한다(§실사용 확인 2026-08-18 — `router.refresh()`
- *    + `revalidatePath`만으로는 반영 타이밍이 보장되지 않았다).
- * 3. 탭이 다시 포커스될 때 같은 재조회를 한 번 더 한다.
- * 4. 60초 폴링으로 같은 재조회를 반복한다.
+ * 3. 읽음 처리/삭제 성공 시 `lib/realtime/dm-badge-bus.ts`를 통해 오는 즉시 신호로 같은
+ *    재조회를 바로 호출한다(§실사용 확인 2026-08-18 — `router.refresh()` + `revalidatePath`만
+ *    으로는 반영 타이밍이 보장되지 않았다).
+ * 4. 탭이 다시 포커스될 때 같은 재조회를 한 번 더 한다.
+ * 5. 20초 폴링으로 같은 재조회를 반복한다.
  *
- * 2~4번을 추가한 이유(§실사용 확인 2026-08-17, "배지가 될 때도 있고 안 될 때도 있다"): 이
- * 프로젝트에서 이미 여러 번 겪은 교훈과 같다(§CLAUDE.md) — Realtime 구독처럼 "즉시 감지"
- * 계열 신호 하나만 믿으면 세션 토큰 만료/네트워크 재연결 등으로 조용히 끊긴 뒤에도 알아챌
- * 방법이 없다. 특히 `supabase.realtime.setAuth()`를 마운트 시점에 한 번만 호출하면, 그
- * 이후 토큰이 갱신돼도(자동 리프레시) Realtime 클라이언트는 낡은 토큰을 계속 쓰게 되어
- * RLS 인증이 실패하고 이벤트를 조용히 못 받게 된다 — `onAuthStateChange`의
- * `TOKEN_REFRESHED` 이벤트로 매번 다시 전달해 이 경로도 함께 보강했다.
+ * ## 왜 마운트 시점에 즉시 재동기화하는가 (§실사용 확인 2026-08-18, 결정적 재현)
  *
- * **채널 이름을 마운트마다 고유하게 만드는 이유**(§실사용 확인 2026-08-18, 핵심 단서 —
- * "/random(다른 route group)에 한 번 들어갔다 나오면 그 이후로는 배지 실시간 갱신이 안 됨"):
- * `/random`은 `(chat)` route group, 이 훅을 쓰는 `MainNav`는 `(main)` route group 소속이라
- * 그 사이를 오가면 최상위 레이아웃이 통째로 바뀌면서 이 훅이 매번 언마운트→재마운트된다.
- * `createClient()`(`@supabase/ssr`의 `createBrowserClient()`)는 같은 탭 안에서 Realtime
- * 소켓 연결을 사실상 싱글턴처럼 재사용하는데, 채널 이름이 고정(`dm-badge-${userId}`)이면
- * 언마운트 시 정리 중인(`removeChannel()`은 fire-and-forget이라 서버 반영을 기다리지 않는다)
- * 옛 채널과 재마운트로 새로 `subscribe()`하는 채널의 이름이 겹쳐, 새 구독이 서버에 조용히
- * 무시될 수 있다 — `lib/hooks/use-random-matching.ts`가 세션 채널 전환 시 이미 겪고 고친
- * 것과 같은 클래스의 경쟁 상태다. 마운트 시점에 한 번 생성한 고유 suffix를 이름에 붙여
- * 이전 채널과 절대 겹치지 않게 한다.
+ * "/random(다른 route group)에 한 번 들어갔다 나오면 그 이후로는 배지 실시간 갱신이 안 됨"이라는
+ * 제보를 Playwright + 실제 테스트 계정 2개로 재현하며, 브라우저 WebSocket 프레임을 직접
+ * 캡처해 원인을 확인했다:
+ *
+ * - `/random`은 `(chat)` route group, 이 훅을 쓰는 `MainNav`는 `(main)` route group 소속이라
+ *   그 사이를 오가면 최상위 레이아웃이 통째로 바뀌면서 `MainNav`가 매번 언마운트→재마운트된다.
+ * - `/random`으로 이동하면 이 훅의 cleanup이 정상적으로 실행되어 `dm-badge-*` 채널의
+ *   `phx_leave` 프레임이 전송되는 것을 확인했다(=언마운트는 확실히 일어난다).
+ * - 하지만 다시 홈으로 돌아왔을 때는 **`dm-badge-*` 채널의 새 `phx_join` 프레임이 전혀
+ *   전송되지 않았다** — 채널 이름을 마운트마다 고유하게 만드는 방어(이 파일에 이미 있던 수정)를
+ *   적용한 뒤에도 동일하게 재현되어, 최초 가설이었던 "채널 이름 충돌"만으로는 설명되지 않는
+ *   더 근본적인 문제였다(정확한 메커니즘은 특정하지 못했다 — Next.js 16 App Router가
+ *   route group 경계를 넘나드는 네비게이션에서 클라이언트 컴포넌트를 어떻게 재사용/재마운트
+ *   하는지의 세부 동작으로 추정된다).
+ * - 반대로 새로고침 없는 "단순 마운트" 상태(같은 (main) 레이아웃 안에서 한 번도 벗어나지
+ *   않은 경우)에서는 이 채널이 정상적으로 INSERT 이벤트를 즉시(1초 내) 전달하는 것도 함께
+ *   확인했다 — 즉 Realtime 구독 자체나 RLS/publication 설정은 문제가 아니고, 특정 종류의
+ *   재마운트 이후에만 재구독이 조용히 실패한다.
+ *
+ * 정확한 근본 원인을 계속 추적하는 대신, 이 프로젝트가 이미 여러 번 채택한 원칙(§CLAUDE.md
+ * "sendBeacon/pagehide/Presence leave 같은 즉시 감지 계열은 신뢰도가 낮다 — 되면 좋은 보너스
+ * 경로로만 쓰고, 항상 별도의 주기적 재검증을 최종 안전망으로 둘 것")을 그대로 적용했다:
+ * Realtime INSERT 구독은 "되면 즉시 반영되는 보너스"로 유지하되, **마운트될 때마다(=이런
+ * 재마운트 시나리오를 포함해) 무조건 한 번 실제 값으로 재동기화**해 realtime 경로가 조용히
+ * 죽어 있어도 페이지 진입 시점에는 항상 정확한 값을 보장한다. 폴링 간격도 60초→20초로
+ * 좁혀 "탭을 이동하지 않고 같은 화면에 계속 머무는 동안 realtime만 죽는" 나머지 경우의
+ * 최대 지연도 줄였다.
  *
  * Realtime 채널은 기본 anon 권한으로 연결되므로, RLS(`auth.uid() in (sender_id, recipient_id)`)가
  * 적용된 이벤트를 받으려면 구독 전(그리고 토큰이 갱신될 때마다) 로그인 세션의 access token을
- * 명시적으로 전달해야 한다.
+ * 명시적으로 전달해야 한다. 세션 토큰 자동 갱신(`TOKEN_REFRESHED`) 시에도 다시 전달한다 —
+ * 마운트 시점에 한 번만 호출하면 그 이후 토큰이 갱신됐을 때 Realtime 클라이언트가 낡은
+ * 토큰을 계속 써서 RLS 인증이 실패할 수 있다.
  */
 export function useDmUnreadBadge(initialCount: number, userId: string | null): number {
   const [count, setCount] = useState(initialCount);
@@ -80,6 +95,15 @@ export function useDmUnreadBadge(initialCount: number, userId: string | null): n
 
   useEffect(() => {
     if (!userId) return;
+
+    // 마운트될 때마다 즉시 1회 재동기화 — 위 문서화된 재현 사례(재마운트 후 Realtime
+    // 재구독이 조용히 실패하는 경우)의 핵심 안전망이다. Realtime 경로가 정상이면 이 호출은
+    // 중복일 뿐 무해하고(둘 다 같은 참값에 수렴), 실패한 경우에는 이 호출 하나가 유일한
+    // 복구 수단이 된다. resync() 내부의 setState는 서버 액션 응답을 기다린 뒤(비동기 콜백)
+    // 실행되므로 실제로는 렌더 도중 동기 setState가 아니지만, 정적 분석 규칙은 이를
+    // 구분하지 못한다(§components/search/user-search-panel.tsx의 기존 동일 처리 참고).
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void resync();
 
     const supabase = createClient();
     let channel: ReturnType<typeof supabase.channel> | null = null;
@@ -121,7 +145,7 @@ export function useDmUnreadBadge(initialCount: number, userId: string | null): n
       }
     });
 
-    // 읽음 처리/삭제가 성공하면 오는 즉시 신호 — 안전망 중 가장 빠른 경로다(위 주석 2번).
+    // 읽음 처리/삭제가 성공하면 오는 즉시 신호 — 안전망 중 가장 빠른 경로다(위 주석 3번).
     const unsubscribeBus = subscribeDmBadgeResync(() => void resync());
 
     // 탭이 다시 포커스되면 실제 값으로 재동기화한다 — Realtime 구독 하나만 믿지 않는 안전망.
