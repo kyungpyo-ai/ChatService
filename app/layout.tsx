@@ -58,6 +58,13 @@ export default async function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
+          <div
+            data-debug-user={String(user?.id ?? "null")}
+            data-debug-profile={String(profile?.id ?? "null")}
+            data-debug-dmuserid={String(dmUserId ?? "null")}
+            data-debug-count={String(initialDmUnreadCount)}
+            style={{ display: "none" }}
+          />
           <DmBadgeProvider userId={dmUserId} initialCount={initialDmUnreadCount}>
             {children}
           </DmBadgeProvider>
