@@ -83,7 +83,10 @@ export function useDmUnreadBadge(initialCount: number, userId: string | null): n
   // 동작하는 generateTempId()를 재사용한다. useRef 초기화 콜백은 최초 렌더에서만 실행된다.
   const channelSuffixRef = useRef<string | undefined>(undefined);
   if (channelSuffixRef.current === undefined) {
-    channelSuffixRef.current = generateTempId();
+    const freshSuffix = generateTempId();
+    channelSuffixRef.current = freshSuffix;
+
+    console.log("[dm-badge-debug] NEW component instance (suffix generated)", freshSuffix);
   }
 
   const resync = useCallback(async () => {
@@ -94,6 +97,12 @@ export function useDmUnreadBadge(initialCount: number, userId: string | null): n
   }, []);
 
   useEffect(() => {
+    console.log(
+      "[dm-badge-debug] effect run, userId=",
+      userId,
+      "suffix=",
+      channelSuffixRef.current
+    );
     if (!userId) return;
 
     // 마운트될 때마다 즉시 1회 재동기화 — 위 문서화된 재현 사례(재마운트 후 Realtime
@@ -179,6 +188,12 @@ export function useDmUnreadBadge(initialCount: number, userId: string | null): n
     const resyncTimer = setInterval(() => void resync(), RESYNC_INTERVAL_MS);
 
     return () => {
+      console.log(
+        "[dm-badge-debug] effect cleanup, userId=",
+        userId,
+        "suffix=",
+        channelSuffixRef.current
+      );
       unmountedBeforeReady = true;
       document.removeEventListener("visibilitychange", handleVisibility);
       clearInterval(resyncTimer);
