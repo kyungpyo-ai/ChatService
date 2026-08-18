@@ -7,6 +7,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { checkRateLimit } from "@/lib/utils/rate-limit";
+import { getDmUnreadCount } from "@/lib/queries/dm";
 import type { ActionResult } from "@/lib/types/forms";
 
 /**
@@ -121,5 +122,28 @@ export async function hideDmNoteAction(noteId: string): Promise<ActionResult> {
     return { success: true, message: "" };
   } catch {
     return { success: false, message: "삭제 중 오류가 발생했습니다." };
+  }
+}
+
+/**
+ * 안읽음 개수 재조회 — `useDmUnreadBadge`(§lib/realtime/dm-badge.ts)가 Realtime 구독 하나만
+ * 믿지 않고, 탭 포커스 시점/주기적 폴백으로 실제 값을 다시 맞추기 위해 호출한다
+ * (§CLAUDE.md "즉시 감지 계열은 신뢰도가 낮다, 항상 별도의 주기적 재검증을 안전망으로 둘 것").
+ * 호출자 본인의 카운트만 반환하며, userId는 클라이언트가 아니라 세션에서 직접 확인한다.
+ */
+export async function getDmUnreadCountAction(): Promise<ActionResult<number>> {
+  try {
+    const supabase = await createClient();
+
+    const { data, error: authError } = await supabase.auth.getClaims();
+    const userId = data?.claims?.sub;
+    if (authError || !userId) {
+      return { success: false, message: "로그인이 필요합니다." };
+    }
+
+    const count = await getDmUnreadCount(userId);
+    return { success: true, message: "", data: count };
+  } catch {
+    return { success: false, message: "안읽음 개수를 불러오지 못했습니다." };
   }
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { ArrowDownLeft, ArrowUpRight, MoreVertical, Trash2 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -12,6 +13,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { TransitionLink } from "@/components/ui/transition-link";
 import { hideDmNoteAction } from "@/app/actions/dm";
+import { triggerDmBadgeResync } from "@/lib/realtime/dm-badge-bus";
 import { formatNoteDate } from "@/lib/utils/date";
 import { showError } from "@/lib/utils/toast";
 import { cn } from "@/lib/utils";
@@ -27,6 +29,7 @@ interface DmNoteListProps {
  * "..." 메뉴에서 항목 단위 소프트 삭제(나만 안 보이게)를 할 수 있다.
  */
 export function DmNoteList({ notes: initialNotes }: DmNoteListProps) {
+  const router = useRouter();
   const [notes, setNotes] = useState(initialNotes);
 
   const handleDelete = async (noteId: string) => {
@@ -37,7 +40,15 @@ export function DmNoteList({ notes: initialNotes }: DmNoteListProps) {
     if (!result.success) {
       showError(result.message);
       setNotes(prevNotes);
+      return;
     }
+
+    // 로컬에서는 낙관적으로 목록에서만 지웠을 뿐이다 — 삭제한 쪽지가 안읽음 상태였다면
+    // 네비게이션 배지도 갱신되어야 한다. router.refresh()/revalidatePath만으로는 반영
+    // 타이밍이 보장되지 않아(§실사용 확인 2026-08-18) triggerDmBadgeResync()로도 직접
+    // 신호를 보낸다(§components/dm/dm-note-detail.tsx와 동일한 이유).
+    triggerDmBadgeResync();
+    router.refresh();
   };
 
   if (notes.length === 0) {

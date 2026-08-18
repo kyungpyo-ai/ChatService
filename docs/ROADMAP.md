@@ -1118,6 +1118,115 @@ no-ff merge, 프로덕션 배포 완료.
 - [x] 답장(reply) UX: 쪽지 상세 화면 안에서 "답장하기" 버튼 → 인라인 textarea로 결정.
       목록에서 바로 답장하는 UI는 만들지 않음(상세를 먼저 읽어야 원본 맥락을 알 수 있으므로).
 
+### 후속 개선 (2026-08-17, `feature/dm-realtime-badge` 브랜치)
+
+배포 후 실사용 확인 중 발견된 문제 2건을 반영했다.
+
+1. **안읽음 배지가 탭이 열려있는 동안엔 즉시 갱신되지 않던 문제** — 기존엔
+   `(main)/layout.tsx`가 렌더될 때만(페이지 이동/새로고침) `getDmUnreadCount()`를 다시
+   계산해 내려주는 구조라, 상대가 쪽지를 보내는 순간엔 반영되지 않고 다음 네비게이션까지
+   기다려야 했다. 방채팅/랜덤채팅과 동일한 `postgres_changes` INSERT 구독 패턴을 재사용해
+   `lib/realtime/dm-badge.ts`의 `useDmUnreadBadge(initialCount, userId)` 훅을 추가 — 서버가
+   내려준 초기값에서 시작해 내가 수신자인 새 쪽지 INSERT가 오면 즉시 +1 한다. 착수 전
+   `dm_notes`가 `supabase_realtime` publication에 등록돼 있는지 먼저 확인했는데, 예상대로
+   **등록돼 있지 않았다** — `messages`/`rooms`/`room_members`/`room_bans`에서 이미 여러 번
+   겪은 것과 같은 함정(§Phase 4 "참여자 실시간 반영 버그 3건")이라 `alter publication
+   supabase_realtime add table public.dm_notes`를 마이그레이션으로 추가해 해결했다. 읽음
+   처리/삭제로 카운트가 줄어드는 것은 기존 `revalidatePath("/", "layout")` 흐름과 자연스럽게
+   맞물린다 — 훅이 서버의 최신 `initialCount`를 매 렌더마다 감지해(useEffect가 아니라 렌더
+   중 state 조정 패턴, `react-hooks/set-state-in-effect` 회피) 그 값으로 되돌리므로, 실시간
+   증가분과 서버가 계산한 정확한 값이 어긋나지 않는다. `bottom-nav.tsx`/`sidebar-nav.tsx`가
+   둘 다 항상 마운트되어 있어(반응형 클래스로 숨김 처리만 됨) 각자 훅을 부르면 같은 Realtime
+   채널이 중복으로 열리므로(§CLAUDE.md "같은 화면에서 여러 하트비트가 겹치지 않는지 확인"과
+   같은 함정), `components/layout/main-nav.tsx` wrapper 하나가 훅을 한 번만 호출해 두
+   컴포넌트에 값을 내려주도록 구성했다.
+2. **내가 보낸 쪽지 상세에도 "답장하기" 버튼이 떠 있던 버그** — `dm-note-detail.tsx`가
+   `direction`(받음/보냄) 구분 없이 답장 UI를 항상 렌더링하고 있었다. `note.direction ===
+   "received"`일 때만 보이도록 고쳤고, 클라이언트 UI만 막고 서버가 안 막으면 우회 가능하므로
+   `send_dm_note()`의 `reply_to_id` 검증도 함께 강화했다 — 기존엔 "호출자가 원본 쪽지의
+   참여자(발신 또는 수신) 중 하나면" 통과시켜, 발신자 본인이 자기가 보낸 쪽지를 reply_to로
+   넘겨도 막지 못했다. "원본 쪽지의 수신자가 호출자 본인"인 경우만 허용하도록 바꿔, 답장은
+   항상 "내가 받은 쪽지에 대한 응답"이어야 한다는 제약을 DB 레벨에서도 강제한다.
+
+마이그레이션: `supabase/migrations/20260818000000_dm_notes_realtime_and_reply_recipient_check.sql`.
+
+### 후속 개선 2 (2026-08-17, Preview 실사용 검증 중 발견한 버그 2건)
+
+위 배지 실시간 갱신을 Preview에 배포해 사용자가 직접 써보며 발견한 문제 2건.
+
+1. **배지 실시간 갱신이 "될 때도 있고 안 될 때도 있음"** — `useDmUnreadBadge`가
+   `supabase.realtime.setAuth(session.access_token)`를 마운트 시점에 딱 한 번만 호출하고
+   있었다. 세션 토큰이 자동 갱신되면(`TOKEN_REFRESHED`) Realtime 클라이언트는 여전히 낡은
+   토큰을 쓰게 되어, 그 이후로는 RLS(`auth.uid() in (sender_id, recipient_id)`) 인증이
+   실패해 이벤트 자체를 조용히 못 받는다 — Realtime 구독 하나만 믿고 안전망이 없던 것이
+   원인으로 추정된다(§CLAUDE.md "즉시 감지 계열은 신뢰도가 낮다, 항상 별도의 주기적
+   재검증을 안전망으로 둘 것"과 동일한 패턴). 두 가지로 보강했다:
+   - `supabase.auth.onAuthStateChange()`로 `TOKEN_REFRESHED` 이벤트마다 `realtime.setAuth()`를
+     다시 호출.
+   - 탭이 다시 포커스될 때(`visibilitychange`)와 60초 폴링으로 `getDmUnreadCountAction()`
+     (새로 추가한 서버 액션, `getDmUnreadCount()` 쿼리를 감싼 얇은 래퍼)을 호출해 실제 값으로
+     재동기화하는 안전망 추가. 배지 하나 세는 용도라 방채팅 하트비트(5~10초)처럼 자주 돌
+     필요는 없다고 판단해 60초로 잡았다.
+2. **읽었는데도 배지가 안 사라질 때가 있음** — `markDmNoteReadAction`을 `useEffect` 안에서
+   `void`로 호출만 하고 있어, 서버 액션의 `revalidatePath("/", "layout")`만으로 현재 화면이
+   확실히 다시 렌더링된다는 보장이 약했다. `markDmNoteReadAction`/`hideDmNoteAction` 성공
+   시 `router.refresh()`를 명시적으로 호출하도록 `dm-note-detail.tsx`(읽음)와
+   `dm-note-list.tsx`(삭제 — 기존엔 로컬 state만 낙관적으로 지우고 있어 배지 쪽 반영이
+   보장되지 않았음)에 각각 추가했다.
+
+**검증 관련 참고**: 실제 두 로그인 세션으로 Playwright 재현을 시도했으나, 이 작업 환경
+(worktree)에는 Supabase 환경 변수(`.env.local`)와 확인된 테스트 계정이 없어 로컬 dev 서버로
+로그인 플로우 전체를 재현할 수 없었다 — 특히 이번 증상의 핵심 원인으로 추정한 "토큰 갱신
+시점"은 실제 세션 만료 주기를 기다리거나 인위적으로 만료시켜야 재현 가능해, 짧은 세션 안에서
+결정적으로 재현하기도 어렵다. 대신 코드 레벨에서 원인(설명 1번)을 특정하고 대응(토큰 갱신
+리스너 + 폴링/포커스 안전망)한 뒤 `npm run typecheck`/`npm run lint`/`npm run build`로
+정적 검증했다 — Preview 배포 후 실제 두 계정으로 재검증은 병합 전 사용자가 직접 진행하기로 함.
+
+마이그레이션: 없음(DB 변경 없이 클라이언트 로직만 수정).
+
+### 후속 개선 3 — 근본 원인 확정 및 아키텍처 수정 (2026-08-18~19, 최종)
+
+위 두 차례 수정 이후에도 사용자가 "여전히 될 때도 있고 안 될 때도 있다", "랜덤채팅 한 번
+갔다 오면 그 이후로 계속 안 된다"를 재현해, `console.log` 계측을 배포해가며 실제 브라우저
+WebSocket 프레임과 함께 원인을 끝까지 추적했다(테스트 계정 2개를 Supabase에 직접
+생성(`pgcrypto`로 bcrypt 해시 삽입)해 Playwright 두 브라우저 컨텍스트로 재현·검증).
+
+**진짜 원인**: `/random`(`(chat)` route group)으로 이동하면 배지를 쓰던 `(main)/layout.tsx`의
+`MainNav`가 언마운트되며 채널이 0개가 되어 `@supabase/realtime-js`가 소켓을 자동으로 닫는다.
+그 소켓의 내부 자동 재연결(backoff) 타이머가 뒤늦게 발동해, 채널이 하나도 없는 상태로 소켓을
+다시 열었다가 곧바로 다시 닫는 시점과 `MainNav` 재마운트로 새로 시도하는
+`channel().subscribe()`가 경쟁한다 — 결과적으로 join 요청이 서버의 `phx_reply`를 영원히 못
+받고 클라이언트 자체 타임아웃(10초)까지 `TIMED_OUT`으로 남아, 매번 60초(당시 20초) 폴링에만
+의존하게 됐다. `realtime.connect()`를 구독 직전에 강제로 호출해도 자동 재연결 타이머와
+경쟁하는 구조 자체는 바뀌지 않아 마찬가지였다.
+
+**최종 해결**: 재마운트 자체를 없앴다. 배지 Realtime 구독(`useDmUnreadBadge`)을
+`components/dm/dm-badge-provider.tsx`(`DmBadgeProvider`, React Context)로 감싸 `app/layout.tsx`
+(route group과 무관한 앱 최상위)에 딱 한 번만 마운트한다 — `/random`을 오가도 이 구독은
+절대 언마운트되지 않으므로, 채널 수가 0으로 떨어지는 순간 자체가 없어져 위 경쟁이 원천적으로
+발생하지 않는다. `MainNav`는 `useDmBadgeCount()`로 값만 구독한다.
+
+이 리팩터링 과정에서 새 회귀를 하나 만들었다가 같이 고쳤다: 처음엔 `app/layout.tsx`(Server
+Component)가 `getUser()`로 userId를 구해 `DmBadgeProvider`에 prop으로 내려줬는데, 로그인
+직후에도 이 값이 계속 로그인 전(null) 상태로 고정되는 문제가 있었다 — 로그인은
+`signInWithPassword()` 후 `router.push("/")`로 이루어지는 **클라이언트 사이드 네비게이션**인데,
+Next.js App Router는 두 라우트가 공유하는 레이아웃(루트 레이아웃)을 네비게이션 시 다시
+렌더하지 않는다. `export const dynamic = "force-dynamic"`을 걸어도 "다시 렌더 자체를 안 하는"
+문제라 소용없었다. `DmBadgeProvider`가 `supabase.auth.getUser()` + `onAuthStateChange()`로
+userId를 클라이언트에서 직접, 반응형으로 추적하도록 바꿔 해결 — 로그인/로그아웃이 실제로
+일어나는 순간 즉시 갱신되고 서버 렌더 타이밍과 무관하다. 루트 레이아웃은 다시 순수 정적 셸로
+되돌렸다(서버 사이드 auth 조회 완전히 제거).
+
+Playwright 실제 클릭(SPA 네비게이션, `page.goto()`가 아님 — 처음엔 이 차이 때문에 재현
+자체가 실패해 오탐을 몇 차례 보고했다) 기반으로 랜덤채팅 왕복 → 쪽지 수신을 5회 반복 재현해
+전부 3ms~620ms 이내 반영을 확인했고, 읽음 처리 5회 반복도 매번 정확히 반영됨을 확인했다.
+
+폴링 주기는 근본 원인이 해결되어 다시 순수 안전망 역할로 돌아갔으므로, 로그인 중 전 페이지에서
+도는 점을 감안해 60초로 유지한다(중간에 20초로 좁혔던 것을 원복).
+
+마이그레이션: 없음. 변경 파일: `app/layout.tsx`, `components/dm/dm-badge-provider.tsx`(신규),
+`components/layout/main-nav.tsx`, `app/(main)/layout.tsx`, `lib/realtime/dm-badge.ts`.
+
 **연관 PRD**: 없음(Phase 10에서 승격된 신규 범위 — PRD.md에 추가 필요)
 
 ---

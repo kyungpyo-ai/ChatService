@@ -4,6 +4,7 @@ import { ThemeProvider } from "next-themes";
 import { Toaster } from "@/components/ui/sonner";
 import { VersionWatcher } from "@/components/version-watcher";
 import { getBuildVersion } from "@/lib/utils/build-version";
+import { DmBadgeProvider } from "@/components/dm/dm-badge-provider";
 import "./globals.css";
 
 const defaultUrl =
@@ -37,7 +38,7 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          {children}
+          <DmBadgeProvider>{children}</DmBadgeProvider>
           <Toaster />
           <VersionWatcher initialVersion={getBuildVersion()} />
         </ThemeProvider>

@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { TransitionLink } from "@/components/ui/transition-link";
 import { markDmNoteReadAction, sendDmNoteAction } from "@/app/actions/dm";
+import { triggerDmBadgeResync } from "@/lib/realtime/dm-badge-bus";
 import { formatChatDate, formatChatTime } from "@/lib/utils/date";
 import { showError, showSuccess } from "@/lib/utils/toast";
 import type { DmNoteDetail } from "@/lib/queries/dm";
@@ -28,14 +29,23 @@ export function DmNoteDetailView({ note }: DmNoteDetailViewProps) {
   const [sending, setSending] = useState(false);
   const markedAsReadRef = useRef(false);
 
-  // 받은 쪽지를 열람하면 1회만 읽음 처리한다. 목록/네비게이션 배지는 서버 액션의
-  // revalidatePath("/", "layout")로 갱신된다.
+  // 받은 쪽지를 열람하면 1회만 읽음 처리한다. 서버 액션의 revalidatePath("/", "layout")와
+  // router.refresh()만으로는 반영 타이밍이 항상 보장되지 않아(§실사용 확인 2026-08-18,
+  // "읽었는데도 배지가 안 사라질 때가 있음") triggerDmBadgeResync()로 useDmUnreadBadge에
+  // "지금 당장 다시 세줘"라는 신호를 직접 보낸다(§lib/realtime/dm-badge-bus.ts).
+  // router.refresh()는 그대로 유지 — 이 화면 자체가 다시 그려질 다른 서버 데이터가 있을 수
+  // 있으니 그것과는 별개로 필요하다.
   useEffect(() => {
     if (note.direction === "received" && !markedAsReadRef.current) {
       markedAsReadRef.current = true;
-      void markDmNoteReadAction(note.id);
+      void markDmNoteReadAction(note.id).then((result) => {
+        if (result.success) {
+          triggerDmBadgeResync();
+          router.refresh();
+        }
+      });
     }
-  }, [note.id, note.direction]);
+  }, [note.id, note.direction, router]);
 
   const handleSendReply = async () => {
     const trimmed = replyContent.trim();
@@ -91,35 +101,39 @@ export function DmNoteDetailView({ note }: DmNoteDetailViewProps) {
         <p className="text-sm leading-relaxed whitespace-pre-wrap">{note.content}</p>
       </div>
 
-      {replying ? (
-        <div className="space-y-2">
-          <Textarea
-            value={replyContent}
-            onChange={(e) => setReplyContent(e.target.value)}
-            placeholder={`${note.partnerNickname}님에게 답장하기`}
-            rows={5}
-            disabled={sending}
-            autoFocus
-          />
-          <div className="flex justify-end gap-2">
-            <Button variant="ghost" onClick={() => setReplying(false)} disabled={sending}>
-              취소
-            </Button>
-            <Button
-              className="bg-brand hover:bg-brand/90 text-brand-foreground"
-              onClick={() => void handleSendReply()}
-              disabled={sending || !replyContent.trim()}
-            >
-              {sending ? "보내는 중..." : "답장 보내기"}
-            </Button>
+      {/* 답장은 받은 쪽지에만 가능하다 — 내가 보낸 쪽지 상세는 열람 전용이다(§후속 개선
+          2026-08-17). 서버(send_dm_note)도 reply_to_id의 원본 수신자가 호출자 본인인지
+          재검증하므로, 이 UI를 우회해 API를 직접 호출해도 자기가 보낸 쪽지에는 답장할 수 없다. */}
+      {note.direction === "received" &&
+        (replying ? (
+          <div className="space-y-2">
+            <Textarea
+              value={replyContent}
+              onChange={(e) => setReplyContent(e.target.value)}
+              placeholder={`${note.partnerNickname}님에게 답장하기`}
+              rows={5}
+              disabled={sending}
+              autoFocus
+            />
+            <div className="flex justify-end gap-2">
+              <Button variant="ghost" onClick={() => setReplying(false)} disabled={sending}>
+                취소
+              </Button>
+              <Button
+                className="bg-brand hover:bg-brand/90 text-brand-foreground"
+                onClick={() => void handleSendReply()}
+                disabled={sending || !replyContent.trim()}
+              >
+                {sending ? "보내는 중..." : "답장 보내기"}
+              </Button>
+            </div>
           </div>
-        </div>
-      ) : (
-        <Button variant="outline" className="w-full gap-2" onClick={() => setReplying(true)}>
-          <Reply size={16} />
-          답장하기
-        </Button>
-      )}
+        ) : (
+          <Button variant="outline" className="w-full gap-2" onClick={() => setReplying(true)}>
+            <Reply size={16} />
+            답장하기
+          </Button>
+        ))}
     </div>
   );
 }

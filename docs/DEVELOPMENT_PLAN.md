@@ -1641,6 +1641,95 @@ Phase 7.7 작업 이전에 이미 닉네임을 설정해둔 기존 계정은 이
   `exactly_one_context`가 2-way로 원복된 것을 SQL로 직접 확인한 뒤 착수했다(롤백이 실제로
   적용됐는지 재검증).
 
+### 후속 개선 (2026-08-17, `feature/dm-realtime-badge` 브랜치)
+
+배포 후 실사용 확인 중 발견된 문제 2건.
+
+**① 안읽음 배지 실시간 갱신**
+
+- 착수 전 `select tablename from pg_publication_tables where pubname = 'supabase_realtime'`로
+  `dm_notes` 등록 여부를 먼저 확인 — 예상대로 **등록돼 있지 않았다**(`messages`/`rooms`/
+  `room_members`/`room_bans`와 동일하게 겪은 함정, §Phase 4). `alter publication
+  supabase_realtime add table public.dm_notes`로 해결.
+- `lib/realtime/dm-badge.ts`의 `useDmUnreadBadge(initialCount, userId)` — `postgres_changes`
+  INSERT를 `recipient_id=eq.{userId}` 필터로 구독(구독 전 `supabase.realtime.setAuth()` 필수,
+  RLS가 `auth.uid()`를 참조하므로 anon 기본 연결로는 이벤트 자체를 못 받는다). 이벤트가 오면
+  로컬 count를 +1만 한다 — "정확한 값으로 재동기화"는 서버가 다시 계산해 내려주는
+  `initialCount`가 바뀔 때(페이지 이동 등으로 레이아웃이 재검증될 때) 담당한다.
+- `initialCount` 변경 감지는 `useEffect` + `setState`가 아니라 **렌더 도중 state를 조정하는
+  React 공식 패턴**(`if (initialCount !== prevInitialCount) { setPrevInitialCount(...);
+  setCount(...) }`)으로 구현했다 — 처음엔 `useEffect(() => setCount(initialCount),
+  [initialCount])`로 짰다가 `eslint`(`react-hooks/set-state-in-effect`)가 "effect 안에서
+  setState하면 추가 렌더가 발생한다"고 에러를 내서 렌더 중 조정 패턴으로 바꿨다(캐스케이딩
+  렌더 한 번을 줄이는 이점도 있음).
+- `bottom-nav.tsx`(모바일)와 `sidebar-nav.tsx`(PC)는 반응형 클래스로 화면 크기에 따라
+  숨겨질 뿐 **둘 다 항상 DOM에 마운트**돼 있다 — 각자 안에서 훅을 부르면 같은 화면에서
+  Realtime 채널이 두 번 열리는 꼴이 된다(§CLAUDE.md "같은 화면에서 여러 하트비트가 겹치지
+  않는지 확인할 것"과 동일한 함정). `components/layout/main-nav.tsx`라는 client wrapper를
+  새로 만들어 훅을 한 번만 호출하고, 두 네비게이션 컴포넌트에 같은 `unreadDmCount` 값을
+  내려주도록 `(main)/layout.tsx`를 수정했다(기존에 레이아웃이 `SidebarNav`/`BottomNav`를
+  각각 직접 렌더하던 것을 `MainNav` 하나로 교체).
+
+**② 답장하기 버튼이 보낸 쪽지 상세에도 뜨던 버그**
+
+- `components/dm/dm-note-detail.tsx`가 `note.direction` 구분 없이 답장 UI를 항상 렌더링하고
+  있었다. `note.direction === "received"`일 때만 보이도록 수정.
+- 클라이언트 UI만 막으면 API를 직접 호출해 우회할 수 있으므로 `send_dm_note()`의
+  `p_reply_to_id` 검증도 함께 강화했다 — 기존 `v_uid in (n.sender_id, n.recipient_id)`는
+  발신자 본인이 자기가 보낸 쪽지를 `reply_to_id`로 넘겨도 통과시켰다. `n.recipient_id =
+  v_uid`(원본 쪽지의 수신자가 호출자 본인)로 좁혀, 답장이 "내가 받은 쪽지에 대한 응답"이라는
+  제약을 DB 레벨에서도 강제한다.
+
+마이그레이션: `supabase/migrations/20260818000000_dm_notes_realtime_and_reply_recipient_check.sql`.
+
+**검증**: `npm run typecheck`/`npm run lint`(기존 무관 경고 2건 제외) 통과, `npm run build`
+성공, `mcp__supabase__get_advisors(security)` ERROR 0건(WARN은 기존과 동일한 패턴), SQL로
+`dm_notes`가 `supabase_realtime` publication에 실제로 등록됐는지 재확인.
+
+### 후속 개선 2 (2026-08-17, 같은 브랜치에 새 커밋 — Preview 실사용 검증 중 발견한 버그 2건)
+
+위 배지 실시간 갱신을 Preview에 올려 사용자가 직접 확인하며 발견한 문제.
+
+**① 배지 실시간 갱신이 "될 때도 있고 안 될 때도 있음"**
+
+- 원인으로 추정한 지점: `useDmUnreadBadge`가 `supabase.realtime.setAuth(session.access_token)`를
+  effect 마운트 시점에 딱 한 번만 호출하고 있었다. 세션 토큰이 자동 갱신되면 Realtime
+  클라이언트는 여전히 마운트 시점의 낡은 토큰을 쓰게 되고, RLS(`auth.uid() in (sender_id,
+  recipient_id)`)가 그 토큰으로 재검증에 실패해 이후 INSERT 이벤트를 조용히 못 받는다 —
+  에러가 나지 않고 그냥 안 오기 때문에 "가끔 안 됨"으로 보인 것으로 추정.
+- 대응 ①: `supabase.auth.onAuthStateChange((event, session) => { if (event ===
+  'TOKEN_REFRESHED' && session) supabase.realtime.setAuth(session.access_token); })`를 추가해
+  토큰이 갱신될 때마다 Realtime 클라이언트에도 새 토큰을 다시 전달.
+- 대응 ②(안전망): `app/actions/dm.ts`에 `getDmUnreadCountAction()`을 새로 추가(기존
+  `getDmUnreadCount()` 쿼리를 감싼 얇은 래퍼, 호출자 본인의 `getClaims()` 세션으로 대상을
+  결정해 클라이언트가 넘긴 userId를 신뢰하지 않음). `useDmUnreadBadge`가 `visibilitychange`로
+  탭이 다시 보일 때, 그리고 60초 간격 폴링으로 이 액션을 호출해 실제 값으로 재동기화한다.
+  Realtime 구독 하나만 믿지 않는다는 점에서 `lib/realtime/random.ts`의 "정기 하트비트(신뢰
+  소스) + Presence(빠른 힌트, 단독 신뢰 불가)" 이중 구조와 같은 사고방식이다 — 다만 배지는
+  방채팅 수준의 긴급성이 없으므로 하트비트만큼 촘촘할 필요는 없어 60초로 잡았다.
+
+**② 읽었는데도 배지가 안 사라질 때가 있음**
+
+- `components/dm/dm-note-detail.tsx`가 `markDmNoteReadAction`을 `useEffect` 안에서 `void`로
+  호출만 하고 결과를 기다리지 않고 있었다. 서버 액션의 `revalidatePath("/", "layout")`만으로
+  현재 클라이언트 화면이 확실히 다시 렌더링된다는 보장이 약하다고 보고, 성공 응답을 받으면
+  `router.refresh()`를 명시적으로 호출하도록 바꿨다(`useEffect` 의존성 배열에 `router` 추가).
+- `components/dm/dm-note-list.tsx`의 삭제 핸들러도 동일한 문제가 있었다 — 로컬 state에서
+  낙관적으로 항목만 지우고 있어서, 지운 쪽지가 안읽음 상태였다면 배지가 갱신될 보장이
+  없었다. `hideDmNoteAction` 성공 시 `router.refresh()`를 추가.
+
+마이그레이션: 없음(DB 변경 없이 클라이언트 로직만 수정 — `useDmUnreadBadge`/`dm-note-detail.tsx`/
+`dm-note-list.tsx`/`app/actions/dm.ts`의 새 `getDmUnreadCountAction`).
+
+**검증**: `npm run typecheck`/`npm run lint`(기존 무관 경고 2건 제외)/`npm run build` 모두
+통과. **두 로그인 세션으로 실제 재현은 하지 못했다** — 이 작업 환경(worktree)에는
+`.env.local`(Supabase URL/키)과 확인된 테스트 계정이 없어 로컬 dev 서버로 로그인부터 재현할
+방법이 없었고, 특히 원인으로 지목한 "토큰 자동 갱신 시점"은 세션 만료 주기(수십 분~시간
+단위)를 기다리거나 인위적으로 토큰을 무효화해야 재현되는 종류라 짧은 세션 안에서 결정적으로
+재현하기 어려운 성격이었다. 코드 레벨에서 원인을 특정하고 대응(토큰 갱신 리스너 추가 +
+포커스/폴링 안전망)한 뒤 정적 검증까지만 마쳤고, Preview에서 실제 두 계정으로 확인하는 것은
+병합 전 사용자가 직접 진행하기로 했다.
+
 ---
 
 *— End of DEVELOPMENT_PLAN (Phase 2, 11 상세, 이후 Phase는 착수 시 갱신) —*
