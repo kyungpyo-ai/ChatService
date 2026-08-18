@@ -106,37 +106,54 @@ export function useDmUnreadBadge(initialCount: number, userId: string | null): n
     void resync();
 
     const supabase = createClient();
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+    let unmountedBeforeReady = false;
 
-    // 채널 생성·구독은 effect 본문에서 곧바로(동기적으로) 실행한다 — 예전에는
-    // `await supabase.auth.getSession()` 뒤에야 채널을 만들었는데, 이 await가 끝나기 전에
-    // 컴포넌트가 다시 언마운트되면(`cancelled` 가드에 걸려) 채널 자체가 한 번도 만들어지지
-    // 않은 채 조용히 넘어갔다 — "이번 마운트에서는 재구독 자체가 아예 안 열리는" 레이스였다
-    // (§실사용 확인 2026-08-18, "새로고침하면 다시 빨라진다"가 결정적 단서: 새로고침은 항상
-    // 이 await 경쟁 없이 깨끗하게 마운트되지만, `/random` 왕복 같은 SPA 네비게이션은 이
-    // effect가 아주 짧게 mount→unmount→mount될 수 있어 await 도중 취소되는 경우가 있었다).
-    // `setAuth()`는 구독 이후에 호출해도 소켓에 그대로 반영되므로, 구독을 먼저 걸고 세션
-    // 토큰은 비동기로 뒤따라 붙인다.
-    const channel = supabase
-      .channel(`dm-badge-${userId}-${channelSuffixRef.current}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "dm_notes",
-          filter: `recipient_id=eq.${userId}`,
-        },
-        () => {
-          setCount((prev) => prev + 1);
-        }
-      )
-      .subscribe();
-
-    void supabase.auth.getSession().then(({ data: { session } }) => {
+    // setAuth()는 반드시 subscribe() 전에 끝나 있어야 한다 — 나중에 실측해보니(§실사용 확인
+    // 2026-08-18) 구독을 먼저 걸고 토큰을 뒤따라 붙이는 순서로 바꿨더니 postgres_changes의
+    // RLS 인증이 구독 시점의 auth 컨텍스트로 고정돼버려 매번 20초 폴링에만 의존하는 것으로
+    // 퇴화했다(순간적인 "레이스"가 아니라 매번 재현되는 회귀). 그래서 auth-먼저-구독-나중
+    // 순서 자체는 되돌리되, 예전 버그(아래)만 정확히 고친다.
+    //
+    // 예전 버그: `await getSession()` 도중 컴포넌트가 다시 언마운트되면 `if (cancelled) return`
+    // 가드에 걸려 채널 자체가 한 번도 만들어지지 않은 채 조용히 넘어갔다 — "이번 마운트에서는
+    // 재구독이 아예 안 열리는" 레이스였다("새로고침하면 다시 빨라진다"가 결정적 단서: 새로고침은
+    // 이 await 경쟁 없이 깨끗하게 마운트되지만, `/random` 왕복 같은 SPA 네비게이션은 이 effect가
+    // 아주 짧게 mount→unmount→mount될 수 있어 await 도중 취소되는 경우가 있었다).
+    //
+    // 고친 방식: await가 끝나기 전에 언마운트되어도 채널 생성·구독 자체는 항상 끝까지 실행한다
+    // (그래야 다음 마운트를 기다리지 않고 그 즉시 정리할 수 있다). 다만 이미 cleanup이 실행된
+    // 뒤라면(unmountedBeforeReady) 방금 만든 채널을 곧바로 제거해 리크를 막는다.
+    (async () => {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
       if (session) {
         supabase.realtime.setAuth(session.access_token);
       }
-    });
+
+      const newChannel = supabase
+        .channel(`dm-badge-${userId}-${channelSuffixRef.current}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "INSERT",
+            schema: "public",
+            table: "dm_notes",
+            filter: `recipient_id=eq.${userId}`,
+          },
+          () => {
+            setCount((prev) => prev + 1);
+          }
+        )
+        .subscribe();
+
+      if (unmountedBeforeReady) {
+        supabase.removeChannel(newChannel);
+      } else {
+        channel = newChannel;
+      }
+    })();
 
     // 토큰 자동 갱신 시 Realtime 클라이언트에도 새 토큰을 다시 전달한다(위 주석 참고) —
     // 이걸 안 하면 세션이 오래 유지될수록(토큰 만료 주기마다) 구독이 조용히 무력화된다.
@@ -162,11 +179,14 @@ export function useDmUnreadBadge(initialCount: number, userId: string | null): n
     const resyncTimer = setInterval(() => void resync(), RESYNC_INTERVAL_MS);
 
     return () => {
+      unmountedBeforeReady = true;
       document.removeEventListener("visibilitychange", handleVisibility);
       clearInterval(resyncTimer);
       unsubscribeBus();
       authSubscription.unsubscribe();
-      supabase.removeChannel(channel);
+      if (channel) {
+        supabase.removeChannel(channel);
+      }
     };
   }, [userId, resync]);
 
