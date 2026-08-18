@@ -10,6 +10,11 @@ import { getDmUnreadCount } from "@/lib/queries/dm";
 import { DmBadgeProvider } from "@/components/dm/dm-badge-provider";
 import "./globals.css";
 
+// 쪽지 배지 초기값이 사용자별로 달라야 하는데, 루트 레이아웃은 정적 셸로 최적화되기 쉬워
+// 요청마다 새로 렌더되지 않을 위험이 있다 — 명시적으로 동적 렌더링을 강제한다(§실사용 확인
+// 2026-08-18, 모든 사용자에게 같은(0) 값이 캐시되어 내려가는 회귀를 겪은 뒤 추가).
+export const dynamic = "force-dynamic";
+
 const defaultUrl =
   process.env.NEXT_PUBLIC_SITE_URL ||
   (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000");
