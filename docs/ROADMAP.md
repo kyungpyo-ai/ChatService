@@ -1184,6 +1184,49 @@ no-ff merge, 프로덕션 배포 완료.
 
 마이그레이션: 없음(DB 변경 없이 클라이언트 로직만 수정).
 
+### 후속 개선 3 — 근본 원인 확정 및 아키텍처 수정 (2026-08-18~19, 최종)
+
+위 두 차례 수정 이후에도 사용자가 "여전히 될 때도 있고 안 될 때도 있다", "랜덤채팅 한 번
+갔다 오면 그 이후로 계속 안 된다"를 재현해, `console.log` 계측을 배포해가며 실제 브라우저
+WebSocket 프레임과 함께 원인을 끝까지 추적했다(테스트 계정 2개를 Supabase에 직접
+생성(`pgcrypto`로 bcrypt 해시 삽입)해 Playwright 두 브라우저 컨텍스트로 재현·검증).
+
+**진짜 원인**: `/random`(`(chat)` route group)으로 이동하면 배지를 쓰던 `(main)/layout.tsx`의
+`MainNav`가 언마운트되며 채널이 0개가 되어 `@supabase/realtime-js`가 소켓을 자동으로 닫는다.
+그 소켓의 내부 자동 재연결(backoff) 타이머가 뒤늦게 발동해, 채널이 하나도 없는 상태로 소켓을
+다시 열었다가 곧바로 다시 닫는 시점과 `MainNav` 재마운트로 새로 시도하는
+`channel().subscribe()`가 경쟁한다 — 결과적으로 join 요청이 서버의 `phx_reply`를 영원히 못
+받고 클라이언트 자체 타임아웃(10초)까지 `TIMED_OUT`으로 남아, 매번 60초(당시 20초) 폴링에만
+의존하게 됐다. `realtime.connect()`를 구독 직전에 강제로 호출해도 자동 재연결 타이머와
+경쟁하는 구조 자체는 바뀌지 않아 마찬가지였다.
+
+**최종 해결**: 재마운트 자체를 없앴다. 배지 Realtime 구독(`useDmUnreadBadge`)을
+`components/dm/dm-badge-provider.tsx`(`DmBadgeProvider`, React Context)로 감싸 `app/layout.tsx`
+(route group과 무관한 앱 최상위)에 딱 한 번만 마운트한다 — `/random`을 오가도 이 구독은
+절대 언마운트되지 않으므로, 채널 수가 0으로 떨어지는 순간 자체가 없어져 위 경쟁이 원천적으로
+발생하지 않는다. `MainNav`는 `useDmBadgeCount()`로 값만 구독한다.
+
+이 리팩터링 과정에서 새 회귀를 하나 만들었다가 같이 고쳤다: 처음엔 `app/layout.tsx`(Server
+Component)가 `getUser()`로 userId를 구해 `DmBadgeProvider`에 prop으로 내려줬는데, 로그인
+직후에도 이 값이 계속 로그인 전(null) 상태로 고정되는 문제가 있었다 — 로그인은
+`signInWithPassword()` 후 `router.push("/")`로 이루어지는 **클라이언트 사이드 네비게이션**인데,
+Next.js App Router는 두 라우트가 공유하는 레이아웃(루트 레이아웃)을 네비게이션 시 다시
+렌더하지 않는다. `export const dynamic = "force-dynamic"`을 걸어도 "다시 렌더 자체를 안 하는"
+문제라 소용없었다. `DmBadgeProvider`가 `supabase.auth.getUser()` + `onAuthStateChange()`로
+userId를 클라이언트에서 직접, 반응형으로 추적하도록 바꿔 해결 — 로그인/로그아웃이 실제로
+일어나는 순간 즉시 갱신되고 서버 렌더 타이밍과 무관하다. 루트 레이아웃은 다시 순수 정적 셸로
+되돌렸다(서버 사이드 auth 조회 완전히 제거).
+
+Playwright 실제 클릭(SPA 네비게이션, `page.goto()`가 아님 — 처음엔 이 차이 때문에 재현
+자체가 실패해 오탐을 몇 차례 보고했다) 기반으로 랜덤채팅 왕복 → 쪽지 수신을 5회 반복 재현해
+전부 3ms~620ms 이내 반영을 확인했고, 읽음 처리 5회 반복도 매번 정확히 반영됨을 확인했다.
+
+폴링 주기는 근본 원인이 해결되어 다시 순수 안전망 역할로 돌아갔으므로, 로그인 중 전 페이지에서
+도는 점을 감안해 60초로 유지한다(중간에 20초로 좁혔던 것을 원복).
+
+마이그레이션: 없음. 변경 파일: `app/layout.tsx`, `components/dm/dm-badge-provider.tsx`(신규),
+`components/layout/main-nav.tsx`, `app/(main)/layout.tsx`, `lib/realtime/dm-badge.ts`.
+
 **연관 PRD**: 없음(Phase 10에서 승격된 신규 범위 — PRD.md에 추가 필요)
 
 ---
