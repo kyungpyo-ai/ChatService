@@ -133,14 +133,19 @@ export function useDmUnreadBadge(initialCount: number, userId: string | null): n
     // 고친 방식: await가 끝나기 전에 언마운트되어도 채널 생성·구독 자체는 항상 끝까지 실행한다
     // (그래야 다음 마운트를 기다리지 않고 그 즉시 정리할 수 있다). 다만 이미 cleanup이 실행된
     // 뒤라면(unmountedBeforeReady) 방금 만든 채널을 곧바로 제거해 리크를 막는다.
+    const mySuffix = channelSuffixRef.current;
+    console.log("[dm-badge-debug] before getSession()", mySuffix);
     (async () => {
       const {
         data: { session },
       } = await supabase.auth.getSession();
+      console.log("[dm-badge-debug] after getSession(), session?", !!session, mySuffix);
       if (session) {
         supabase.realtime.setAuth(session.access_token);
+        console.log("[dm-badge-debug] setAuth done", mySuffix);
       }
 
+      console.log("[dm-badge-debug] before channel().subscribe()", mySuffix);
       const newChannel = supabase
         .channel(`dm-badge-${userId}-${channelSuffixRef.current}`)
         .on(
@@ -155,7 +160,10 @@ export function useDmUnreadBadge(initialCount: number, userId: string | null): n
             setCount((prev) => prev + 1);
           }
         )
-        .subscribe();
+        .subscribe((status, err) => {
+          console.log("[dm-badge-debug] subscribe status", status, err?.message, mySuffix);
+        });
+      console.log("[dm-badge-debug] after channel().subscribe() call returned", mySuffix);
 
       if (unmountedBeforeReady) {
         supabase.removeChannel(newChannel);
