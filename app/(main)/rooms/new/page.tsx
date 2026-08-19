@@ -1,15 +1,12 @@
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUserClaims } from "@/lib/supabase/auth";
 import { CreateRoomForm } from "@/components/rooms/create-room-form";
 import { Button } from "@/components/ui/button";
 
 export default async function CreateRoomPage() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const claims = await getCurrentUserClaims();
 
-  if (!user) {
+  if (!claims?.sub) {
     return (
       <div className="mx-auto max-w-md space-y-4 px-4 py-16 text-center">
         <p className="text-muted-foreground text-sm">방을 만들려면 로그인이 필요합니다.</p>

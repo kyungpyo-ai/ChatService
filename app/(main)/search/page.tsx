@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUserClaims } from "@/lib/supabase/auth";
 import { UserSearchPanel } from "@/components/search/user-search-panel";
 
 /**
@@ -9,14 +9,12 @@ import { UserSearchPanel } from "@/components/search/user-search-panel";
  * `UserSearchPanel`에 넘길 현재 사용자 id만 조회한다.
  */
 export default async function UserSearchPage() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const claims = await getCurrentUserClaims();
+  const userId = claims?.sub;
 
-  if (!user) {
+  if (!userId) {
     redirect("/auth/login");
   }
 
-  return <UserSearchPanel currentUserId={user.id} />;
+  return <UserSearchPanel currentUserId={userId} />;
 }

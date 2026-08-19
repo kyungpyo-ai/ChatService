@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { getCurrentUserClaims } from "@/lib/supabase/auth";
 import { getUserProfile } from "@/lib/queries/profile";
 import { DmComposeForm } from "@/components/dm/dm-compose-form";
 import { Button } from "@/components/ui/button";
@@ -15,16 +16,14 @@ export default async function DmComposePage({
     redirect("/dm");
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const claims = await getCurrentUserClaims();
+  const userId = claims?.sub;
 
-  if (!user) {
+  if (!userId) {
     redirect(`/auth/login?redirect=/dm/compose?to=${to}`);
   }
 
-  const profile = await getUserProfile(user.id);
+  const profile = await getUserProfile(userId);
   if (!profile) {
     return (
       <div className="mx-auto max-w-sm space-y-4 px-4 py-16 text-center">
@@ -41,10 +40,11 @@ export default async function DmComposePage({
     );
   }
 
-  if (to === user.id) {
+  if (to === userId) {
     redirect("/dm");
   }
 
+  const supabase = await createClient();
   const { data: recipient } = await supabase
     .from("profiles")
     .select("id, username, avatar_url")

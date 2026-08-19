@@ -10,19 +10,17 @@
 
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { getCurrentUserClaims } from "@/lib/supabase/auth";
 import { AdminSidebar } from "@/components/admin/admin-sidebar";
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
-  const supabase = await createClient();
+  const claims = await getCurrentUserClaims();
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
+  if (!claims?.sub) {
     notFound();
   }
 
+  const supabase = await createClient();
   const { data: isAdmin, error } = await supabase.rpc("is_admin");
 
   if (error || !isAdmin) {

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { getCurrentUserClaims } from "@/lib/supabase/auth";
 import {
   getRoomDetail,
   getMyRoomMembership,
@@ -21,12 +22,10 @@ export default async function RoomChatPage({ params }: { params: Promise<{ roomI
     notFound();
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const claims = await getCurrentUserClaims();
+  const userId = claims?.sub;
 
-  if (!user) {
+  if (!userId) {
     return (
       <div className="mx-auto max-w-sm space-y-4 px-4 py-16 text-center">
         <div className="space-y-1">
@@ -46,7 +45,8 @@ export default async function RoomChatPage({ params }: { params: Promise<{ roomI
     );
   }
 
-  let isMember = await getMyRoomMembership(roomId, user.id);
+  const supabase = await createClient();
+  let isMember = await getMyRoomMembership(roomId, userId);
   let joinErrorMessage: string | undefined;
 
   // 공개방은 "입장하기" 화면 없이 클릭 즉시 채팅방으로 들어가도록, 서버에서 바로 참여를
@@ -107,7 +107,7 @@ export default async function RoomChatPage({ params }: { params: Promise<{ roomI
       notice="서로 존중하며 즐거운 대화를 나누어요 😊"
       initialMessages={messages}
       participants={members}
-      currentUserId={user.id}
+      currentUserId={userId}
     />
   );
 }
