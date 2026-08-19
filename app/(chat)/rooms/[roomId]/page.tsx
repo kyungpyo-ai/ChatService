@@ -16,13 +16,13 @@ import { Ban, Users } from "lucide-react";
 export default async function RoomChatPage({ params }: { params: Promise<{ roomId: string }> }) {
   const { roomId } = await params;
 
-  const room = await getRoomDetail(roomId);
+  // 방 정보 조회와 로그인 확인은 서로 의존하지 않으므로 병렬로 보낸다.
+  const [room, claims] = await Promise.all([getRoomDetail(roomId), getCurrentUserClaims()]);
 
   if (!room) {
     notFound();
   }
 
-  const claims = await getCurrentUserClaims();
   const userId = claims?.sub;
 
   if (!userId) {

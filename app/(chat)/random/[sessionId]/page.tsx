@@ -18,13 +18,16 @@ export default async function RandomChatPage({
     redirect("/random");
   }
 
-  const session = await getRandomSessionForUser(sessionId, userId);
+  // 세션 유효성 확인과 메시지 조회는 서로 의존하지 않으므로 병렬로 보낸다 — 세션이
+  // 무효하면 아래에서 notFound()로 막고 messages 결과는 그냥 버린다.
+  const [session, messages] = await Promise.all([
+    getRandomSessionForUser(sessionId, userId),
+    getRandomSessionMessages(sessionId, userId),
+  ]);
 
   if (!session) {
     notFound();
   }
-
-  const messages = await getRandomSessionMessages(sessionId, userId);
 
   return (
     <RandomChatView
