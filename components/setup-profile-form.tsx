@@ -202,7 +202,11 @@ export function SetupProfileForm({ suggestedUsername, redirectPath }: SetupProfi
         />
 
         {/* 제출 버튼 */}
-        <Button type="submit" className="w-full" disabled={isSubmitting}>
+        <Button
+          type="submit"
+          className="bg-brand hover:bg-brand/90 text-brand-foreground w-full rounded-(--radius-card)"
+          disabled={isSubmitting}
+        >
           {isSubmitting ? (
             <>
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />

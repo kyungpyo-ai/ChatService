@@ -11,7 +11,6 @@ import { signOut } from "@/app/actions/auth";
 import { SetupProfileForm } from "@/components/setup-profile-form";
 import { generateUsername } from "@/lib/utils/username";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 /**
  * 닉네임 설정 페이지
@@ -54,23 +53,23 @@ export default async function SetupProfilePage({
 
   return (
     <div className="flex min-h-svh items-center justify-center p-6">
-      <Card className="w-full max-w-md">
-        <CardHeader>
-          <CardTitle>프로필 설정</CardTitle>
+      <div className="bg-surface w-full max-w-md rounded-(--radius-card) border p-6 shadow-(--shadow-card)">
+        <div className="mb-6 space-y-1">
+          <h1 className="text-xl font-bold" style={{ fontFamily: "var(--font-display)" }}>
+            프로필 설정
+          </h1>
           <p className="text-muted-foreground text-sm">닉네임을 설정하여 프로필을 완성해주세요</p>
-        </CardHeader>
-        <CardContent>
-          <SetupProfileForm suggestedUsername={suggestedUsername} redirectPath={next} />
-          {/* 다른 계정으로 가입하고 싶거나 이 단계를 완료하지 않고 나가고 싶을 때의
-              탈출구 — 없으면 닉네임을 설정하기 전까진 로그인할 때마다 이 화면으로만
-              되돌아와 로그아웃할 방법이 없는 막다른 골목이 된다(§사용자 재현 확인). */}
-          <form action={signOut} className="mt-4 text-center">
-            <Button type="submit" variant="link" className="text-muted-foreground h-auto p-0">
-              다른 계정으로 로그인하기 (로그아웃)
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
+        </div>
+        <SetupProfileForm suggestedUsername={suggestedUsername} redirectPath={next} />
+        {/* 다른 계정으로 가입하고 싶거나 이 단계를 완료하지 않고 나가고 싶을 때의
+            탈출구 — 없으면 닉네임을 설정하기 전까진 로그인할 때마다 이 화면으로만
+            되돌아와 로그아웃할 방법이 없는 막다른 골목이 된다(§사용자 재현 확인). */}
+        <form action={signOut} className="mt-4 text-center">
+          <Button type="submit" variant="link" className="text-muted-foreground h-auto p-0">
+            다른 계정으로 로그인하기 (로그아웃)
+          </Button>
+        </form>
+      </div>
     </div>
   );
 }
