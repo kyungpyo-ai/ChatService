@@ -156,7 +156,7 @@ export function ChatMessageBubble({ message, variant }: ChatMessageBubbleProps) 
                 ? "overflow-hidden rounded-(--radius-bubble)"
                 : "min-w-0 rounded-(--radius-bubble) px-3.5 py-2 text-sm break-words",
               !message.imageUrl &&
-                (isMe ? "bg-brand-muted text-brand" : "bg-surface-muted text-foreground")
+                (isMe ? "bg-brand-muted text-brand-strong" : "bg-surface-muted text-foreground")
             )}
           >
             {message.imageUrl ? (
