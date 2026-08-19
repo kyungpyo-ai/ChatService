@@ -8,7 +8,9 @@ export default function HomePage() {
     <div className="mx-auto flex min-h-[calc(100dvh-3.5rem)] max-w-2xl flex-col justify-center px-4 py-6 md:min-h-screen">
       <div className="space-y-6">
         <div className="space-y-1">
-          <h1 className="text-2xl font-bold">새로운 대화를 시작해보세요 👋</h1>
+          <h1 className="text-2xl font-bold" style={{ fontFamily: "var(--font-display)" }}>
+            새로운 대화를 시작해보세요 👋
+          </h1>
           <p className="text-muted-foreground text-sm">
             익명으로도, 로그인해도 즐겁게 대화할 수 있어요!
           </p>

@@ -67,7 +67,7 @@ export function CreateRoomForm() {
             <FormItem>
               <FormLabel>방 제목</FormLabel>
               <FormControl>
-                <Input placeholder="예: 수다온 사람들 모여라" {...field} disabled={isSubmitting} />
+                <Input placeholder="예: 달나루 사람들 모여라" {...field} disabled={isSubmitting} />
               </FormControl>
               <FormMessage />
             </FormItem>

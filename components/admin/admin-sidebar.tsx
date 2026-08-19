@@ -13,6 +13,7 @@ import {
   BarChart3,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { BrandLogo } from "@/components/layout/brand-logo";
 
 const NAV_ITEMS: {
   href: string;
@@ -40,8 +41,9 @@ export function AdminSidebar() {
 
   return (
     <aside className="bg-surface hidden w-56 shrink-0 flex-col border-r p-4 md:fixed md:inset-y-0 md:flex">
-      <Link href="/admin" className="mb-6 px-2 text-lg font-bold">
-        수다온 관리자
+      <Link href="/admin" className="mb-6 flex items-center gap-1.5 px-2 text-lg font-bold">
+        <BrandLogo />
+        <span className="text-muted-foreground text-sm font-normal">관리자</span>
       </Link>
       <nav className="flex flex-col gap-1">
         {NAV_ITEMS.map(({ href, label, icon: Icon, exact }) => {

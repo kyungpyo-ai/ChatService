@@ -19,6 +19,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { ThemeSwitcher } from "@/components/theme-switcher";
 import { signOut } from "@/app/actions/auth";
+import { BrandLogo } from "@/components/layout/brand-logo";
 
 const NAV_ITEMS = [
   { href: "/", label: "홈", icon: Home },
@@ -53,7 +54,7 @@ export function SidebarNav({
   return (
     <aside className="bg-surface fixed inset-y-0 left-0 z-30 hidden w-60 flex-col border-r p-4 md:flex">
       <Link href="/" className="mb-6 px-2 text-xl font-bold">
-        💬 수다온
+        <BrandLogo />
       </Link>
 
       <nav className="flex flex-1 flex-col gap-1">

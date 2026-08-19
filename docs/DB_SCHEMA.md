@@ -1,4 +1,4 @@
-# 수다온(sudaon) DB 스키마
+# 달나루(dalnaru) DB 스키마 (구 수다온/sudaon)
 
 > `ARCHITECTURE.md`에서 정한 구조를 실제 테이블/함수/RLS 정책으로 구체화한 문서다. 여기 정의된 내용은 설계 기준이며, 실제 마이그레이션 파일은 `DEVELOPMENT_PLAN.md`의 해당 태스크에서 Supabase MCP로 생성/적용한다. 기존 `profiles` 테이블(`supabase/migrations/20260726000000_create_profiles_table.sql`)은 재사용하되 1건의 변경이 필요하다 (§1).
 

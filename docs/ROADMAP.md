@@ -1,4 +1,4 @@
-# 수다온(sudaon) 개발 로드맵
+# 달나루(dalnaru) 개발 로드맵 (구 수다온/sudaon)
 
 > 이 문서는 `PRD.md`의 요구사항을 실제 개발 순서(마일스톤)로 분해한 것이다. 각 Phase는 순차 진행을 기본으로 하되, 의존성이 없는 작업은 병렬로 진행할 수 있다. 상세 기술 설계는 `ARCHITECTURE.md`, DB 구조는 `DB_SCHEMA.md`, 세부 태스크 단위 계획은 `DEVELOPMENT_PLAN.md`에서 다룬다.
 

@@ -13,8 +13,8 @@ export default function TermsPage() {
         <section>
           <h2 className="text-foreground mb-2 text-base font-semibold">제1조 (목적)</h2>
           <p>
-            이 약관은 ChatService(이하 &quot;서비스&quot;)의 이용조건 및 절차, 이용자와 서비스
-            운영자의 권리·의무·책임사항을 규정함을 목적으로 합니다.
+            이 약관은 달나루(이하 &quot;서비스&quot;)의 이용조건 및 절차, 이용자와 서비스 운영자의
+            권리·의무·책임사항을 규정함을 목적으로 합니다.
           </p>
         </section>
         <section>

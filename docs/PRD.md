@@ -1,8 +1,8 @@
-# 수다온(sudaon) — 웹 채팅 서비스 MVP PRD
+# 달나루(dalnaru) — 웹 채팅 서비스 MVP PRD
 
 | 항목 | 내용 |
 |---|---|
-| 서비스명 | 수다온 (sudaon) |
+| 서비스명 | 달나루 (dalnaru) — 구 수다온(sudaon) |
 | 문서 버전 | v1.0 (MVP) |
 | 작성일 | 2026-07-26 |
 | 기술 스택 | Next.js · Supabase |

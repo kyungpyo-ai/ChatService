@@ -29,7 +29,7 @@ export function HeroActionRow({
       className={cn(
         "flex items-center gap-4 rounded-(--radius-card) border p-4 shadow-(--shadow-card) transition-transform active:scale-[0.99]",
         isBrand
-          ? "bg-brand text-brand-foreground border-transparent"
+          ? "text-brand-foreground border-transparent bg-[linear-gradient(135deg,var(--brand-gradient-start),var(--brand-gradient-end))]"
           : "bg-surface hover:bg-surface-muted"
       )}
     >
