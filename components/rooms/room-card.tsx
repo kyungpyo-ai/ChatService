@@ -41,7 +41,7 @@ export function RoomCard({ room, currentUserId }: RoomCardProps) {
         <div className="flex min-w-0 items-center gap-1.5">
           <p className="truncate text-base font-bold">{room.title}</p>
           {isMine && (
-            <span className="bg-brand text-brand-foreground shrink-0 rounded px-1.5 py-0.5 text-xs font-semibold">
+            <span className="bg-brand-gradient text-brand-foreground shrink-0 rounded px-1.5 py-0.5 text-xs font-semibold">
               내가 만든 방
             </span>
           )}

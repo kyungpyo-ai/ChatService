@@ -68,7 +68,7 @@ export function DmComposeForm({
       />
 
       <Button
-        className="bg-brand hover:bg-brand/90 text-brand-foreground w-full gap-2"
+        className="bg-brand-gradient text-brand-foreground w-full gap-2 hover:brightness-105"
         onClick={() => void handleSend()}
         disabled={sending || !content.trim()}
       >

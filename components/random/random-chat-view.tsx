@@ -177,7 +177,7 @@ function RandomChatViewActive({
       {sessionEnded ? (
         <div className="bg-surface sticky bottom-0 border-t p-3">
           <Button
-            className="bg-brand hover:bg-brand/90 text-brand-foreground w-full"
+            className="bg-brand-gradient text-brand-foreground w-full hover:brightness-105"
             onClick={handleRematch}
           >
             재매칭

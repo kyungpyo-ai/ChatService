@@ -32,7 +32,7 @@ export default async function DmNoteDetailPage({
           쪽지는 로그인 회원만 이용할 수 있습니다. 로그인해주세요.
         </p>
         <Link href="/auth/login">
-          <Button className="bg-brand hover:bg-brand/90 text-brand-foreground rounded-(--radius-card)">
+          <Button className="bg-brand-gradient text-brand-foreground rounded-(--radius-card) hover:brightness-105">
             로그인하러 가기
           </Button>
         </Link>

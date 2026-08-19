@@ -82,7 +82,7 @@ export function RoomJoinView({
           )}
 
           <Button
-            className="bg-brand hover:bg-brand/90 text-brand-foreground w-full rounded-(--radius-card)"
+            className="bg-brand-gradient text-brand-foreground w-full rounded-(--radius-card) hover:brightness-105"
             onClick={handleJoin}
             disabled={isSubmitting || (isPrivate && password.length === 0)}
           >

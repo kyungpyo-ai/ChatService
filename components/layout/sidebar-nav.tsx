@@ -114,7 +114,7 @@ export function SidebarNav({
           </>
         ) : (
           <Link href="/auth/login">
-            <Button className="bg-brand hover:bg-brand/90 text-brand-foreground w-full rounded-(--radius-card)">
+            <Button className="bg-brand-gradient text-brand-foreground w-full rounded-(--radius-card) hover:brightness-105">
               로그인 / 회원가입
             </Button>
           </Link>

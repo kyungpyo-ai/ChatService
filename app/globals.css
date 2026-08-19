@@ -214,6 +214,13 @@
   border-color: var(--border);
 }
 
+/* 달나루 브랜드 그라디언트(피치→라벤더) — 단색 bg-brand 대신 버튼/배지 등 눈에 띄는
+   솔리드 채움에 일관되게 쓴다(§실사용 확인 2026-08-19, 방 목록 등에서 단색 보라가
+   크림 배경과 어울리지 않는다는 피드백). */
+.bg-brand-gradient {
+  background-image: linear-gradient(135deg, var(--brand-gradient-start), var(--brand-gradient-end));
+}
+
 body {
   background-color: var(--background);
   color: var(--foreground);

@@ -135,7 +135,7 @@ export function CreateRoomForm() {
 
         <Button
           type="submit"
-          className="bg-brand hover:bg-brand/90 text-brand-foreground w-full rounded-(--radius-card)"
+          className="bg-brand-gradient text-brand-foreground w-full rounded-(--radius-card) hover:brightness-105"
           disabled={isSubmitting}
         >
           {isSubmitting ? (

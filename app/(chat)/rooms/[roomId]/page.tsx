@@ -38,7 +38,7 @@ export default async function RoomChatPage({ params }: { params: Promise<{ roomI
         </div>
         <p className="text-muted-foreground text-sm">방에 입장하려면 로그인이 필요합니다.</p>
         <Link href="/auth/login">
-          <Button className="bg-brand hover:bg-brand/90 text-brand-foreground rounded-(--radius-card)">
+          <Button className="bg-brand-gradient text-brand-foreground rounded-(--radius-card) hover:brightness-105">
             로그인하러 가기
           </Button>
         </Link>
