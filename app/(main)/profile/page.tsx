@@ -24,7 +24,7 @@ export default async function ProfilePage() {
   }
 
   return (
-    <div className="mx-auto max-w-md space-y-4 px-4 py-6">
+    <div className="animate-page-fade-in mx-auto max-w-md space-y-4 px-4 py-6">
       <h1 className="text-xl font-bold">내 정보</h1>
 
       <div className="bg-surface rounded-(--radius-card) border p-5 shadow-(--shadow-card)">

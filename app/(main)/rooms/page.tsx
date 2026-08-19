@@ -21,7 +21,7 @@ export default async function RoomListPage() {
   ]);
 
   return (
-    <div className="mx-auto max-w-3xl space-y-4 px-4 py-6">
+    <div className="animate-page-fade-in mx-auto max-w-3xl space-y-4 px-4 py-6">
       <h1 className="text-xl font-bold">방 목록</h1>
 
       <RoomListTabs

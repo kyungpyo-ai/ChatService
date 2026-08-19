@@ -224,6 +224,25 @@
   background-image: linear-gradient(135deg, var(--brand-gradient-start), var(--brand-gradient-end));
 }
 
+/* 로딩 스켈레톤 ↔ 실제 콘텐츠 전환 시 "깜빡" 거리는 느낌을 줄인다.
+   스켈레톤은 150ms 지연 후에만 페이드인(로딩이 그보다 빨리 끝나면 아예 안 보인다),
+   실제 콘텐츠는 마운트되자마자 부드럽게 페이드인 되도록 한다. */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.skeleton-delayed-fade {
+  opacity: 0;
+  animation: fade-in 0.2s ease-out 0.15s forwards;
+}
+.animate-page-fade-in {
+  animation: fade-in 0.2s ease-out;
+}
+
 body {
   background-color: var(--background);
   color: var(--foreground);
