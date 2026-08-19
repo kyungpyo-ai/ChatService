@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUserClaims } from "@/lib/supabase/auth";
 import { getUserProfile } from "@/lib/queries/profile";
 import { ProfileEditForm } from "@/components/profile-edit-form";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -8,16 +8,14 @@ import { DeleteAccountButton } from "@/components/delete-account-button";
 import { signOut } from "@/app/actions/auth";
 
 export default async function ProfilePage() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const claims = await getCurrentUserClaims();
+  const userId = claims?.sub;
 
-  if (!user) {
+  if (!userId) {
     redirect("/auth/login");
   }
 
-  const profile = await getUserProfile(user.id);
+  const profile = await getUserProfile(userId);
 
   if (!profile) {
     redirect("/auth/login");

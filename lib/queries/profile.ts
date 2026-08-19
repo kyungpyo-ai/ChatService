@@ -4,6 +4,7 @@
  * Server Components에서 사용하는 Supabase 쿼리 모음입니다.
  */
 
+import { cache } from "react";
 import { createClient } from "@/lib/supabase/server";
 import type { User } from "@/lib/types/models";
 
@@ -23,7 +24,7 @@ import type { User } from "@/lib/types/models";
  * }
  * ```
  */
-export async function getUserProfile(userId: string): Promise<User | null> {
+export const getUserProfile = cache(async (userId: string): Promise<User | null> => {
   try {
     const supabase = await createClient();
 
@@ -37,7 +38,7 @@ export async function getUserProfile(userId: string): Promise<User | null> {
   } catch {
     return null;
   }
-}
+});
 
 /**
  * 닉네임 사용 가능 여부 확인

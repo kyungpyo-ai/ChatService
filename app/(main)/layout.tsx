@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUserClaims } from "@/lib/supabase/auth";
 import { getUserProfile } from "@/lib/queries/profile";
 import { AppHeader } from "@/components/layout/app-header";
 import { MainNav } from "@/components/layout/main-nav";
@@ -13,14 +13,12 @@ import { HeartbeatProvider } from "@/components/layout/heartbeat-provider";
  * 라우트에만 이 가드가 있어 이메일 가입자는 나이/약관 동의 없이 서비스를 계속 쓸 수 있었다.
  */
 export default async function MainLayout({ children }: { children: React.ReactNode }) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const claims = await getCurrentUserClaims();
+  const userId = claims?.sub;
 
-  const profile = user ? await getUserProfile(user.id) : null;
+  const profile = userId ? await getUserProfile(userId) : null;
 
-  if (user && profile && !profile.username) {
+  if (userId && profile && !profile.username) {
     redirect("/auth/setup-profile");
   }
 
@@ -31,7 +29,7 @@ export default async function MainLayout({ children }: { children: React.ReactNo
 
   return (
     <div className="bg-surface-muted min-h-screen">
-      <HeartbeatProvider userId={user?.id ?? null} />
+      <HeartbeatProvider userId={userId ?? null} />
       <AppHeader
         isLoggedIn={isLoggedIn}
         avatarUrl={profile?.avatar_url}
