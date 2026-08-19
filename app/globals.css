@@ -57,14 +57,19 @@
   --shadow-2xl: 0px 4px 8px -1px hsl(0 0% 0% / 0.25);
   --tracking-normal: 0em;
 
-  /* 수다온(sudaon) 디자인 토큰 — DEVELOPMENT_PLAN.md §2.1 */
-  --brand: oklch(0.55 0.22 275);
-  --brand-foreground: oklch(0.98 0 0);
-  --brand-muted: oklch(0.94 0.03 275);
-  --surface: oklch(1 0 0);
-  --surface-muted: oklch(0.97 0 0);
-  --radius-card: 1rem;
-  --radius-bubble: 1.25rem;
+  /* 달나루(dalnaru) 디자인 토큰 — 라이트(파스텔) 무드 */
+  --brand: #8f6fc4;
+  --brand-foreground: #3a2e52;
+  --brand-muted: #f3ecfb;
+  --brand-strong: #4a3574;
+  --brand-gradient-start: #f3c9a3;
+  --brand-gradient-end: #cbb2e8;
+  --surface: #fdfbf8;
+  --surface-muted: #f6f1ef;
+  --radius-card: 1.375rem;
+  --radius-bubble: 1.5rem;
+  --shadow-card: 0 10px 24px -18px rgba(60, 40, 80, 0.3);
+  --font-display: "Gowun Batang", "Noto Serif KR", serif;
 }
 
 .dark {
@@ -121,12 +126,16 @@
   --shadow-xl: 0px 4px 8px -1px hsl(0 0% 0% / 0.1), 0px 8px 10px -2px hsl(0 0% 0% / 0.1);
   --shadow-2xl: 0px 4px 8px -1px hsl(0 0% 0% / 0.25);
 
-  /* 수다온(sudaon) 디자인 토큰 — 다크 모드 (동일 톤의 어두운 버전) */
-  --brand: oklch(0.68 0.19 275);
-  --brand-foreground: oklch(0.15 0 0);
-  --brand-muted: oklch(0.32 0.06 275);
-  --surface: oklch(0.2686 0 0);
-  --surface-muted: oklch(0.2393 0 0);
+  /* 달나루(dalnaru) 디자인 토큰 — 다크(달빛) 무드 */
+  --brand: #9f86e0;
+  --brand-foreground: #15101f;
+  --brand-muted: #2a2140;
+  --brand-strong: #ded4f7;
+  --brand-gradient-start: #6c5bd9;
+  --brand-gradient-end: #9f86e0;
+  --surface: #140f24;
+  --surface-muted: #1c1430;
+  --shadow-card: 0 16px 30px -12px rgba(108, 91, 217, 0.35);
 }
 
 @theme inline {
@@ -196,14 +205,44 @@
   --color-brand: var(--brand);
   --color-brand-foreground: var(--brand-foreground);
   --color-brand-muted: var(--brand-muted);
+  --color-brand-strong: var(--brand-strong);
   --color-surface: var(--surface);
   --color-surface-muted: var(--surface-muted);
   --radius-card: var(--radius-card);
   --radius-bubble: var(--radius-bubble);
+  --font-display: var(--font-display);
 }
 
 * {
   border-color: var(--border);
+}
+
+/* 달나루 브랜드 그라디언트(피치→라벤더) — 단색 bg-brand 대신 버튼/배지 등 눈에 띄는
+   솔리드 채움에 일관되게 쓴다(§실사용 확인 2026-08-19, 방 목록 등에서 단색 보라가
+   크림 배경과 어울리지 않는다는 피드백). */
+.bg-brand-gradient {
+  background-image: linear-gradient(135deg, var(--brand-gradient-start), var(--brand-gradient-end));
+}
+
+/* 로딩 스켈레톤 ↔ 실제 콘텐츠 전환 시 "깜빡" 거리는 느낌을 줄인다.
+   방목록/내정보는 로그인 쿠키를 쓰는 동적 렌더링이라 실제 데이터 응답이
+   보통 300~400ms 걸린다(실측, §2026-08-19) — 지연을 300ms로 잡아야
+   대부분의 로딩에서 스켈레톤이 아예 안 뜨고 콘텐츠로 바로 넘어간다.
+   그보다 오래 걸리는 드문 경우에만 짧게 페이드인 되도록 한다. */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.skeleton-delayed-fade {
+  opacity: 0;
+  animation: fade-in 0.2s ease-out 0.3s forwards;
+}
+.animate-page-fade-in {
+  animation: fade-in 0.2s ease-out;
 }
 
 body {

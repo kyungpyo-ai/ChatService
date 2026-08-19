@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { getCurrentUserClaims } from "@/lib/supabase/auth";
 import {
   getRoomDetail,
   getMyRoomMembership,
@@ -15,18 +16,16 @@ import { Ban, Users } from "lucide-react";
 export default async function RoomChatPage({ params }: { params: Promise<{ roomId: string }> }) {
   const { roomId } = await params;
 
-  const room = await getRoomDetail(roomId);
+  // 방 정보 조회와 로그인 확인은 서로 의존하지 않으므로 병렬로 보낸다.
+  const [room, claims] = await Promise.all([getRoomDetail(roomId), getCurrentUserClaims()]);
 
   if (!room) {
     notFound();
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const userId = claims?.sub;
 
-  if (!user) {
+  if (!userId) {
     return (
       <div className="mx-auto max-w-sm space-y-4 px-4 py-16 text-center">
         <div className="space-y-1">
@@ -38,7 +37,7 @@ export default async function RoomChatPage({ params }: { params: Promise<{ roomI
         </div>
         <p className="text-muted-foreground text-sm">방에 입장하려면 로그인이 필요합니다.</p>
         <Link href="/auth/login">
-          <Button className="bg-brand hover:bg-brand/90 text-brand-foreground rounded-(--radius-card)">
+          <Button className="bg-brand-gradient text-brand-foreground rounded-(--radius-card) hover:brightness-105">
             로그인하러 가기
           </Button>
         </Link>
@@ -46,7 +45,8 @@ export default async function RoomChatPage({ params }: { params: Promise<{ roomI
     );
   }
 
-  let isMember = await getMyRoomMembership(roomId, user.id);
+  const supabase = await createClient();
+  let isMember = await getMyRoomMembership(roomId, userId);
   let joinErrorMessage: string | undefined;
 
   // 공개방은 "입장하기" 화면 없이 클릭 즉시 채팅방으로 들어가도록, 서버에서 바로 참여를
@@ -107,7 +107,7 @@ export default async function RoomChatPage({ params }: { params: Promise<{ roomI
       notice="서로 존중하며 즐거운 대화를 나누어요 😊"
       initialMessages={messages}
       participants={members}
-      currentUserId={user.id}
+      currentUserId={userId}
     />
   );
 }

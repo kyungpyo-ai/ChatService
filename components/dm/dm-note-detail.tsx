@@ -120,7 +120,7 @@ export function DmNoteDetailView({ note }: DmNoteDetailViewProps) {
                 취소
               </Button>
               <Button
-                className="bg-brand hover:bg-brand/90 text-brand-foreground"
+                className="bg-brand-gradient text-brand-foreground hover:brightness-105"
                 onClick={() => void handleSendReply()}
                 disabled={sending || !replyContent.trim()}
               >

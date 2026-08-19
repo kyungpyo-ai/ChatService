@@ -17,7 +17,7 @@ export function RoomListSearchBar() {
         <Input placeholder="방 제목 검색" className="rounded-full pl-9" />
       </div>
       <Link href="/rooms/new">
-        <Button className="bg-brand hover:bg-brand/90 text-brand-foreground gap-1 rounded-full">
+        <Button className="bg-brand-gradient text-brand-foreground gap-1 rounded-full hover:brightness-105">
           <Plus size={16} />
           <span className="hidden sm:inline">새 방 만들기</span>
         </Button>

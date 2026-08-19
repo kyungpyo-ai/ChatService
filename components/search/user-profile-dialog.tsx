@@ -65,7 +65,7 @@ export function UserProfileDialog({ user, open, onOpenChange, onSendDm }: UserPr
             </p>
 
             <Button
-              className="bg-brand hover:bg-brand/90 text-brand-foreground w-full gap-2 rounded-(--radius-card)"
+              className="bg-brand-gradient text-brand-foreground w-full gap-2 rounded-(--radius-card) hover:brightness-105"
               onClick={onSendDm}
             >
               <Mail size={16} />

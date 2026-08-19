@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUserClaims } from "@/lib/supabase/auth";
 import { getUserProfile } from "@/lib/queries/profile";
 
 /**
@@ -17,14 +17,12 @@ import { getUserProfile } from "@/lib/queries/profile";
  * RandomChatView 안에서 useHeartbeat()를 직접 마운트해 필요한 곳에서만 돈다.
  */
 export default async function ChatLayout({ children }: { children: React.ReactNode }) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const claims = await getCurrentUserClaims();
+  const userId = claims?.sub;
 
-  const profile = user ? await getUserProfile(user.id) : null;
+  const profile = userId ? await getUserProfile(userId) : null;
 
-  if (user && profile && !profile.username) {
+  if (userId && profile && !profile.username) {
     redirect("/auth/setup-profile");
   }
 

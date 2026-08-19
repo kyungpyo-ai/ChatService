@@ -149,34 +149,29 @@ export async function getDmNoteDetail(
   }
 
   const partnerId = isSender ? data.recipient_id : data.sender_id;
-  const { data: partner } = await supabase
-    .from("profiles")
-    .select("id, username, avatar_url")
-    .eq("id", partnerId)
-    .maybeSingle();
 
-  let replyTo: DmNoteDetail["replyTo"] = null;
-  if (data.reply_to_id) {
-    const { data: original } = await supabase
-      .from("dm_notes")
-      .select("id, sender_id, content")
-      .eq("id", data.reply_to_id)
-      .maybeSingle();
+  // 파트너 조회와 답장 원본 조회는 서로 무관하므로 병렬로 보낸다 — 답장 원본은 발신자
+  // 닉네임까지 embed로 한 번에 가져와 예전에 별도 왕복이던 originalSender 조회를 없앤다.
+  const [{ data: partner }, { data: original }] = await Promise.all([
+    supabase.from("profiles").select("id, username, avatar_url").eq("id", partnerId).maybeSingle(),
+    data.reply_to_id
+      ? supabase
+          .from("dm_notes")
+          .select("id, content, sender:profiles!dm_notes_sender_id_fkey(username)")
+          .eq("id", data.reply_to_id)
+          .maybeSingle()
+      : Promise.resolve({ data: null }),
+  ]);
 
-    if (original) {
-      const { data: originalSender } = await supabase
-        .from("profiles")
-        .select("username")
-        .eq("id", original.sender_id)
-        .maybeSingle();
-
-      replyTo = {
+  const replyTo: DmNoteDetail["replyTo"] = original
+    ? {
         id: original.id,
-        senderNickname: originalSender?.username ?? "알 수 없음",
+        senderNickname:
+          (original as unknown as { sender: { username: string | null } | null }).sender
+            ?.username ?? "알 수 없음",
         contentPreview: original.content,
-      };
-    }
-  }
+      }
+    : null;
 
   return {
     id: data.id,

@@ -1,4 +1,4 @@
-# 수다온(sudaon) 아키텍처
+# 달나루(dalnaru) 아키텍처 (구 수다온/sudaon)
 
 > 이 문서는 `PRD.md`의 요구사항과 `ROADMAP.md`의 Phase 구성을 구현하기 위한 시스템 구조를 정의한다. 테이블 상세 컬럼/제약조건은 `DB_SCHEMA.md`, 태스크 단위 작업은 `DEVELOPMENT_PLAN.md`에서 다룬다.
 

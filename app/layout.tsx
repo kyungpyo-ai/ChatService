@@ -13,9 +13,9 @@ const defaultUrl =
 
 export const metadata: Metadata = {
   metadataBase: new URL(defaultUrl),
-  title: "수다온 — 익명 채팅",
+  title: "달나루 — 익명 채팅",
   description:
-    "로그인 없이 바로 시작하는 랜덤채팅, 관심사로 모이는 채팅방. 수다온에서 새로운 대화를 시작해보세요.",
+    "로그인 없이 바로 시작하는 랜덤채팅, 관심사로 모이는 채팅방. 달나루에서 새로운 대화를 시작해보세요.",
 };
 
 const geistSans = Geist({
@@ -31,6 +31,19 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="ko" suppressHydrationWarning>
+      <head>
+        {/*
+          로고 워드마크·홈 히어로 헤드라인 전용 표시 서체(고운바탕). next/font/google은 이
+          Next.js 버전에서 한글(korean) 서브셋을 지원하지 않아(§lib/utils/og-font.ts의
+          동일 문제 참고) 일반 <link>로 Google Fonts CSS2 API를 직접 불러온다.
+        */}
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link
+          href="https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@400;700&display=swap"
+          rel="stylesheet"
+        />
+      </head>
       <body className={`${geistSans.className} antialiased`}>
         <ThemeProvider
           attribute="class"

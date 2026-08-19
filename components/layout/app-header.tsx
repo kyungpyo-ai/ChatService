@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { BrandLogo } from "@/components/layout/brand-logo";
 
 interface AppHeaderProps {
   isLoggedIn: boolean;
@@ -18,7 +19,7 @@ export function AppHeader({ isLoggedIn, avatarUrl, nickname }: AppHeaderProps) {
   return (
     <header className="bg-surface/95 sticky top-0 z-40 flex h-14 items-center justify-between border-b px-4 backdrop-blur md:hidden">
       <Link href="/" className="text-lg font-bold">
-        💬 수다온
+        <BrandLogo />
       </Link>
       <div className="flex items-center gap-1">
         <Link

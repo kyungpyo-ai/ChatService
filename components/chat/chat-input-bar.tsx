@@ -149,7 +149,7 @@ export function ChatInputBar({ onSend, onSendImage, disabled }: ChatInputBarProp
 
         <Button
           size="icon"
-          className="bg-brand hover:bg-brand/90 text-brand-foreground shrink-0 rounded-full md:h-9 md:w-auto md:gap-1.5 md:px-4"
+          className="bg-brand-gradient text-brand-foreground shrink-0 rounded-full hover:brightness-105 md:h-9 md:w-auto md:gap-1.5 md:px-4"
           aria-label="전송"
           onClick={() => void handleSend()}
           disabled={isBusy}

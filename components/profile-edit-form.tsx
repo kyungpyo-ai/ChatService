@@ -29,7 +29,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Card, CardContent } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { updateProfileSchema, type UpdateProfileInput } from "@/lib/schemas/profile";
 import { showSuccess, showError } from "@/lib/utils/toast";
@@ -159,8 +158,8 @@ export function ProfileEditForm({ profile }: ProfileEditFormProps) {
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-        <Card>
-          <CardContent className="space-y-4 pt-6">
+        <div className="bg-surface rounded-(--radius-card) border p-5 shadow-(--shadow-card)">
+          <div className="space-y-4">
             {/* 닉네임 */}
             <FormField
               control={form.control}
@@ -270,15 +269,15 @@ export function ProfileEditForm({ profile }: ProfileEditFormProps) {
                 </FormItem>
               )}
             />
-          </CardContent>
-        </Card>
+          </div>
+        </div>
 
         {/* 제출 버튼 */}
         <div className="flex gap-3">
           <Button
             type="button"
             variant="outline"
-            className="flex-1"
+            className="flex-1 rounded-(--radius-card)"
             onClick={() => router.back()}
             disabled={isSubmitting}
           >
@@ -286,7 +285,7 @@ export function ProfileEditForm({ profile }: ProfileEditFormProps) {
           </Button>
           <Button
             type="submit"
-            className="flex-1"
+            className="bg-brand hover:bg-brand/90 text-brand-foreground flex-1 rounded-(--radius-card)"
             disabled={isSubmitting || usernameAvailable === false}
           >
             {isSubmitting ? (

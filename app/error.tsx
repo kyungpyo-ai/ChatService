@@ -23,7 +23,9 @@ export default function GlobalError({ reset }: { error: Error; reset: () => void
               다시 시도
             </Button>
             <Link href="/">
-              <Button className="bg-brand hover:bg-brand/90 text-brand-foreground">홈으로</Button>
+              <Button className="bg-brand-gradient text-brand-foreground hover:brightness-105">
+                홈으로
+              </Button>
             </Link>
           </div>
         }

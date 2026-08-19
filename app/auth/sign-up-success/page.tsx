@@ -1,22 +1,17 @@
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-
 export default function Page() {
   return (
     <div className="flex min-h-svh w-full items-center justify-center p-6 md:p-10">
       <div className="w-full max-w-sm">
-        <div className="flex flex-col gap-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-2xl">Thank you for signing up!</CardTitle>
-              <CardDescription>Check your email to confirm</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <p className="text-muted-foreground text-sm">
-                You&apos;ve successfully signed up. Please check your email to confirm your account
-                before signing in.
-              </p>
-            </CardContent>
-          </Card>
+        <div className="bg-surface rounded-(--radius-card) border p-6 shadow-(--shadow-card)">
+          <div className="mb-4 space-y-1">
+            <h1 className="text-2xl font-bold" style={{ fontFamily: "var(--font-display)" }}>
+              가입해주셔서 감사합니다!
+            </h1>
+            <p className="text-muted-foreground text-sm">이메일을 확인해주세요</p>
+          </div>
+          <p className="text-muted-foreground text-sm">
+            회원가입이 완료되었습니다. 로그인하기 전에 이메일을 확인해서 계정을 인증해주세요.
+          </p>
         </div>
       </div>
     </div>

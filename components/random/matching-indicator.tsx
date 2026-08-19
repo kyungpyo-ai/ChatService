@@ -32,7 +32,7 @@ export function MatchingIndicator() {
       <div className="relative flex h-40 w-40 items-center justify-center">
         <span className="bg-brand/20 absolute inset-0 animate-ping rounded-full" />
         <span className="bg-brand/10 absolute inset-3 animate-pulse rounded-full" />
-        <div className="bg-brand text-brand-foreground relative flex h-24 w-24 items-center justify-center rounded-full shadow-lg">
+        <div className="bg-brand-gradient text-brand-foreground relative flex h-24 w-24 items-center justify-center rounded-full shadow-lg">
           <MessageCircle size={32} />
         </div>
       </div>

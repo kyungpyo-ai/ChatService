@@ -5,7 +5,6 @@ import { createClient } from "@/lib/supabase/client";
 import { getAuthErrorMessage } from "@/lib/utils/auth-errors";
 import { showSuccess, showError } from "@/lib/utils/toast";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SocialLoginButtons } from "@/components/social-login-buttons";
@@ -74,64 +73,68 @@ export function SignUpForm({ className, ...props }: React.ComponentPropsWithoutR
 
   return (
     <div className={cn("flex flex-col gap-6", className)} {...props}>
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-2xl">회원가입</CardTitle>
-          <CardDescription>새 계정 만들기</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSignUp}>
-            <div className="flex flex-col gap-6">
-              <SocialLoginButtons />
-              <div className="grid gap-2">
-                <Label htmlFor="email">이메일</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  placeholder="example@email.com"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                />
-              </div>
-              <div className="grid gap-2">
-                <div className="flex items-center">
-                  <Label htmlFor="password">비밀번호</Label>
-                </div>
-                <Input
-                  id="password"
-                  type="password"
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                />
-              </div>
-              <div className="grid gap-2">
-                <div className="flex items-center">
-                  <Label htmlFor="repeat-password">비밀번호 확인</Label>
-                </div>
-                <Input
-                  id="repeat-password"
-                  type="password"
-                  required
-                  value={repeatPassword}
-                  onChange={(e) => setRepeatPassword(e.target.value)}
-                />
-              </div>
-              {error && <p className="text-sm text-red-500">{error}</p>}
-              <Button type="submit" className="w-full" disabled={isLoading}>
-                {isLoading ? "계정 생성 중..." : "회원가입"}
-              </Button>
+      <div className="bg-surface rounded-(--radius-card) border p-6 shadow-(--shadow-card)">
+        <div className="mb-6 space-y-1">
+          <h1 className="text-2xl font-bold" style={{ fontFamily: "var(--font-display)" }}>
+            회원가입
+          </h1>
+          <p className="text-muted-foreground text-sm">새 계정 만들기</p>
+        </div>
+        <form onSubmit={handleSignUp}>
+          <div className="flex flex-col gap-6">
+            <SocialLoginButtons />
+            <div className="grid gap-2">
+              <Label htmlFor="email">이메일</Label>
+              <Input
+                id="email"
+                type="email"
+                placeholder="example@email.com"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+              />
             </div>
-            <div className="mt-4 text-center text-sm">
-              이미 계정이 있으신가요?{" "}
-              <Link href="/auth/login" className="underline underline-offset-4">
-                로그인
-              </Link>
+            <div className="grid gap-2">
+              <div className="flex items-center">
+                <Label htmlFor="password">비밀번호</Label>
+              </div>
+              <Input
+                id="password"
+                type="password"
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+              />
             </div>
-          </form>
-        </CardContent>
-      </Card>
+            <div className="grid gap-2">
+              <div className="flex items-center">
+                <Label htmlFor="repeat-password">비밀번호 확인</Label>
+              </div>
+              <Input
+                id="repeat-password"
+                type="password"
+                required
+                value={repeatPassword}
+                onChange={(e) => setRepeatPassword(e.target.value)}
+              />
+            </div>
+            {error && <p className="text-sm text-red-500">{error}</p>}
+            <Button
+              type="submit"
+              className="bg-brand hover:bg-brand/90 text-brand-foreground w-full rounded-(--radius-card)"
+              disabled={isLoading}
+            >
+              {isLoading ? "계정 생성 중..." : "회원가입"}
+            </Button>
+          </div>
+          <div className="mt-4 text-center text-sm">
+            이미 계정이 있으신가요?{" "}
+            <Link href="/auth/login" className="text-brand underline underline-offset-4">
+              로그인
+            </Link>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }

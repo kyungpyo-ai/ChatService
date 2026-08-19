@@ -1,20 +1,18 @@
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUserClaims } from "@/lib/supabase/auth";
 import { getUserProfile } from "@/lib/queries/profile";
 import { getDmNoteList } from "@/lib/queries/dm";
 import { DmNoteList } from "@/components/dm/dm-note-list";
 import { Button } from "@/components/ui/button";
 
 export default async function DmListPage() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const claims = await getCurrentUserClaims();
+  const userId = claims?.sub;
 
   // 미들웨어가 /dm(공개 경로 목록 밖)을 비로그인 시 이미 /auth/login으로 보내지만, 게스트
   // (익명 세션)는 user는 있어도 profiles 행이 없다(§guest_profiles 분리) — 쪽지는 로그인
   // 회원 전용이므로 게스트도 같은 화면으로 안내한다(방 목록 페이지의 isMember 판단과 동일 패턴).
-  const profile = user ? await getUserProfile(user.id) : null;
+  const profile = userId ? await getUserProfile(userId) : null;
 
   if (!profile) {
     return (
@@ -24,7 +22,7 @@ export default async function DmListPage() {
           쪽지는 로그인 회원만 이용할 수 있습니다. 로그인해주세요.
         </p>
         <Link href="/auth/login?redirect=/dm">
-          <Button className="bg-brand hover:bg-brand/90 text-brand-foreground rounded-(--radius-card)">
+          <Button className="bg-brand-gradient text-brand-foreground rounded-(--radius-card) hover:brightness-105">
             로그인하러 가기
           </Button>
         </Link>
@@ -32,7 +30,7 @@ export default async function DmListPage() {
     );
   }
 
-  const notes = await getDmNoteList(user!.id);
+  const notes = await getDmNoteList(userId!);
 
   return (
     <div className="mx-auto max-w-2xl space-y-4 px-4 py-6">

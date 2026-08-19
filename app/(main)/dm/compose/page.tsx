@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { getCurrentUserClaims } from "@/lib/supabase/auth";
 import { getUserProfile } from "@/lib/queries/profile";
 import { DmComposeForm } from "@/components/dm/dm-compose-form";
 import { Button } from "@/components/ui/button";
@@ -15,16 +16,14 @@ export default async function DmComposePage({
     redirect("/dm");
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const claims = await getCurrentUserClaims();
+  const userId = claims?.sub;
 
-  if (!user) {
+  if (!userId) {
     redirect(`/auth/login?redirect=/dm/compose?to=${to}`);
   }
 
-  const profile = await getUserProfile(user.id);
+  const profile = await getUserProfile(userId);
   if (!profile) {
     return (
       <div className="mx-auto max-w-sm space-y-4 px-4 py-16 text-center">
@@ -33,7 +32,7 @@ export default async function DmComposePage({
           쪽지는 로그인 회원만 이용할 수 있습니다. 로그인해주세요.
         </p>
         <Link href="/auth/login">
-          <Button className="bg-brand hover:bg-brand/90 text-brand-foreground rounded-(--radius-card)">
+          <Button className="bg-brand-gradient text-brand-foreground rounded-(--radius-card) hover:brightness-105">
             로그인하러 가기
           </Button>
         </Link>
@@ -41,10 +40,11 @@ export default async function DmComposePage({
     );
   }
 
-  if (to === user.id) {
+  if (to === userId) {
     redirect("/dm");
   }
 
+  const supabase = await createClient();
   const { data: recipient } = await supabase
     .from("profiles")
     .select("id, username, avatar_url")
