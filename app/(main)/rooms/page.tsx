@@ -8,7 +8,7 @@ import { getCurrentUserClaims } from "@/lib/supabase/auth";
 export const metadata: Metadata = {
   title: "방채팅 목록 — 무료 채팅방 | 달나루",
   description:
-    "관심사별로 모인 무료 채팅방을 둘러보고 바로 참여해보세요. 원하는 방이 없다면 직접 채팅방을 만들 수도 있어요.",
+    "마음에 드는 무료 채팅방에 바로 참여해보세요. 원하는 방이 없다면 직접 채팅방을 만들 수도 있어요.",
 };
 
 export default async function RoomListPage() {
@@ -28,9 +28,9 @@ export default async function RoomListPage() {
   return (
     <div className="animate-page-fade-in mx-auto max-w-3xl space-y-4 px-4 py-6">
       <div className="space-y-1">
-        <h1 className="text-xl font-bold">방채팅 — 관심사로 모이는 무료 채팅방</h1>
+        <h1 className="text-xl font-bold">방채팅 — 자유롭게 만드는 무료 채팅방</h1>
         <p className="text-muted-foreground text-sm">
-          주제별 채팅방에 바로 들어가 대화를 나눠보세요. 원하는 주제가 없다면 직접 방을 만들어
+          마음에 드는 방에 바로 들어가 대화를 나눠보세요. 원하는 방이 없다면 직접 채팅방을 만들어
           사람들을 모을 수도 있어요.
         </p>
       </div>

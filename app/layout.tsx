@@ -10,7 +10,7 @@ import "./globals.css";
 
 const title = "달나루 — 로그인 없는 랜덤채팅, 익명채팅, 방채팅";
 const description =
-  "로그인 없이 바로 시작하는 무료 랜덤채팅, 관심사로 모이는 익명 채팅방. 달나루에서 새로운 대화를 시작해보세요.";
+  "로그인 없이 바로 시작하는 무료 랜덤채팅, 직접 만들고 참여하는 채팅방. 달나루에서 새로운 대화를 시작해보세요.";
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
