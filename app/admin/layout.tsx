@@ -8,10 +8,15 @@
  * (리다이렉트 대신 404를 선택한 이유, §DEVELOPMENT_PLAN 7.5.1).
  */
 
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentUserClaims } from "@/lib/supabase/auth";
 import { AdminSidebar } from "@/components/admin/admin-sidebar";
+
+export const metadata: Metadata = {
+  robots: { index: false, follow: false },
+};
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const claims = await getCurrentUserClaims();

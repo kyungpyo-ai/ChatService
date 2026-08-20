@@ -1,7 +1,12 @@
+import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
 import { getCurrentUserClaims } from "@/lib/supabase/auth";
 import { getRandomSessionForUser, getRandomSessionMessages } from "@/lib/queries/random";
 import { RandomChatView } from "@/components/random/random-chat-view";
+
+export const metadata: Metadata = {
+  robots: { index: false, follow: false },
+};
 
 export default async function RandomChatPage({
   params,

@@ -4,6 +4,12 @@
  * 실제 문구·연락처는 운영 결정 및 법률 검토 후 확정된다(§DEVELOPMENT_PLAN 7.7.2, 7.7.4).
  */
 
+import type { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "청소년보호정책 | 달나루",
+};
+
 export default function YouthProtectionPage() {
   return (
     <div className="mx-auto max-w-2xl px-6 py-12">

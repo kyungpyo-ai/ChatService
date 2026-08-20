@@ -1,8 +1,15 @@
+import type { Metadata } from "next";
 import { RoomListSearchBar } from "@/components/rooms/room-list-search-bar";
 import { RoomListTabs } from "@/components/rooms/room-list-tabs";
 import { AdBanner } from "@/components/layout/ad-banner";
 import { getRoomList, getMyRoomList } from "@/lib/queries/rooms";
 import { getCurrentUserClaims } from "@/lib/supabase/auth";
+
+export const metadata: Metadata = {
+  title: "방채팅 목록 — 무료 채팅방 | 달나루",
+  description:
+    "마음에 드는 무료 채팅방에 바로 참여해보세요. 원하는 방이 없다면 직접 채팅방을 만들 수도 있어요.",
+};
 
 export default async function RoomListPage() {
   const claims = await getCurrentUserClaims();
@@ -20,7 +27,14 @@ export default async function RoomListPage() {
 
   return (
     <div className="animate-page-fade-in mx-auto max-w-3xl space-y-4 px-4 py-6">
-      <h1 className="text-xl font-bold">방 목록</h1>
+      <div className="space-y-1">
+        <h1 className="text-xl font-bold">방채팅</h1>
+        <p className="text-muted-foreground text-sm">
+          마음에 드는 방에 바로 들어가 대화를 나눠보세요.
+          <br />
+          원하는 방이 없다면 직접 채팅방을 만들어보세요.
+        </p>
+      </div>
 
       <RoomListTabs
         rooms={rooms}

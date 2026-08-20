@@ -9,10 +9,10 @@ export default function HomePage() {
       <div className="space-y-6">
         <div className="space-y-1">
           <h1 className="text-2xl font-bold" style={{ fontFamily: "var(--font-display)" }}>
-            새로운 대화를 시작해보세요 👋
+            익명채팅으로 시작하는 새로운 대화 👋
           </h1>
           <p className="text-muted-foreground text-sm">
-            익명으로도, 로그인해도 즐겁게 대화할 수 있어요!
+            로그인 없는 랜덤채팅부터 직접 만드는 방채팅까지, 달나루에서 편하게 즐겨보세요.
           </p>
         </div>
 

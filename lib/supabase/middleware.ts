@@ -53,6 +53,11 @@ export async function updateSession(request: NextRequest) {
   // /api/cron/*은 사용자 세션이 아니라 CRON_SECRET(Authorization 헤더)으로 스스로를 보호하는
   // 배치 전용 경로다. 여기서 걸러주지 않으면 세션이 없는 Vercel Cron 요청이 /auth/login으로
   // 리다이렉트되어 배치가 실행되지 않는다(엔드포인트의 시크릿 검증에 도달조차 못 함).
+  //
+  // robots.txt/sitemap.xml/manifest.webmanifest/icon/opengraph-image는 파일 확장자가 없는
+  // Next.js 파일 컨벤션 라우트라 middleware matcher의 정적 파일 제외 패턴에 걸리지 않는다
+  // — 그대로 두면 검색엔진 크롤러나 링크 미리보기 봇(카카오톡·슬랙 등)도 비로그인 상태이므로
+  // /auth/login으로 리다이렉트되어 아예 못 읽는다(§ROADMAP Phase 13에서 발견).
   const isPublicPath =
     request.nextUrl.pathname === "/" ||
     request.nextUrl.pathname.startsWith("/auth") ||
@@ -61,7 +66,12 @@ export async function updateSession(request: NextRequest) {
     request.nextUrl.pathname.startsWith("/random") ||
     request.nextUrl.pathname.startsWith("/rooms") ||
     request.nextUrl.pathname.startsWith("/board") ||
-    request.nextUrl.pathname.startsWith("/legal");
+    request.nextUrl.pathname.startsWith("/legal") ||
+    request.nextUrl.pathname === "/robots.txt" ||
+    request.nextUrl.pathname === "/sitemap.xml" ||
+    request.nextUrl.pathname === "/manifest.webmanifest" ||
+    request.nextUrl.pathname === "/icon" ||
+    request.nextUrl.pathname === "/opengraph-image";
 
   if (!isPublicPath && !user) {
     // no user, potentially respond by redirecting the user to the login page
