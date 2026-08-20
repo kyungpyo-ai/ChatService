@@ -12,6 +12,7 @@ import {
   UserRound,
   ChevronRight,
   LogOut,
+  Newspaper,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AdBanner } from "@/components/layout/ad-banner";
@@ -26,6 +27,7 @@ const NAV_ITEMS = [
   { href: "/random", label: "랜덤채팅", icon: Shuffle },
   { href: "/rooms", label: "방 목록", icon: MessagesSquare },
   { href: "/search", label: "검색", icon: Search },
+  { href: "/board", label: "게시판", icon: Newspaper },
   { href: "/dm", label: "쪽지", icon: Mail },
   { href: "/profile", label: "내 정보", icon: UserRound },
 ] as const;

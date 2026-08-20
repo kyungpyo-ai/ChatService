@@ -19,6 +19,8 @@ function targetHref(targetType: string, targetId: string): string {
       return `/admin/random/${targetId}`;
     case "user":
       return `/admin/users/${targetId}`;
+    case "post":
+      return `/board/${targetId}`;
     default:
       return "#";
   }

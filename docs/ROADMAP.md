@@ -1231,6 +1231,49 @@ Playwright 실제 클릭(SPA 네비게이션, `page.goto()`가 아님 — 처음
 
 ---
 
+## Phase 12 — 게시판(사용자 커뮤니티 보드)
+
+**배경**: 사람을 찾거나 서비스에 건의할 창구가 없다는 실사용 요청(2026-08-20)으로 신설.
+로그인 회원만 글을 쓸 수 있고(게스트는 profiles가 없어 자동 제외), 목록/상세 열람은
+rooms 목록과 동일하게 게스트 포함 누구나 가능하다. 태그(사람찾기/건의사항/기타)로
+분류하고 댓글을 지원한다.
+
+**설계 결정**:
+- 새 신고 테이블을 만들지 않고 기존 `reports.target_type` 체크 제약을 `post`/`comment`
+  로 확장해 재사용했다 — 관리자 신고 큐/상세 화면도 그대로 재사용(TARGET_LABEL/
+  targetHref만 추가).
+- 삭제는 하드 delete가 아니라 `is_deleted` 플래그 — 작성자가 지운 신고 대상 글/댓글도
+  관리자가 신고 상세에서 원문을 계속 볼 수 있어야 한다는 요구사항 때문(방/신고 처리와
+  동일 패턴).
+- 댓글 수는 `room_member_count`와 동일한 SECURITY DEFINER computed-column 함수
+  (`post_comment_count`)로 계산 — 별도 카운터 컬럼/트리거 없이 room_members 패턴을
+  그대로 재사용.
+- 목록은 태그 필터(`?tag=`)와 페이지네이션(`?page=`, 20개/페이지)을 URL 쿼리 파라미터로
+  처리해 서버 컴포넌트에서 그대로 재조회한다(쪽지함 페이지네이션과 동일 패턴).
+
+**버그 하나 발견 후 수정**: `/board`를 `lib/supabase/middleware.ts`의 공개 경로
+목록(`isPublicPath`)에 추가하는 걸 처음에 빠뜨려서, RLS는 게스트 열람을 허용하도록
+만들어놨는데 미들웨어가 그 전 단계에서 비로그인 사용자를 전부 `/auth/login`으로
+튕겨내고 있었다. `rooms`/`random`과 동일하게 prefix를 추가해 해결.
+
+**검증**: Preview에서 실제 로그인 계정으로 글 작성 → 상세 조회 → 게스트 열람까지
+Playwright로 확인. 이후 테스트 중 실수로 브라우저 쿠키를 전부 지워 Vercel Preview
+SSO 세션이 끊겨 브라우저 기반 후속 테스트(댓글 작성/삭제, 신고)가 막혔는데, 같은
+SECURITY DEFINER 함수를 `set_config('request.jwt.claim.sub', ...)`로 auth.uid()를
+시뮬레이션해 SQL 레벨에서 직접 호출하는 방식으로 우회 검증했다 — 댓글 작성/본인만 삭제
+가능/댓글 수 자동 갱신/게시글 소프트 삭제/신고 target_type 확장까지 전부 정상 동작 확인.
+
+마이그레이션: `20260820000000_create_board_posts_and_comments.sql` (posts, post_comments
+테이블 + RLS + SECURITY DEFINER 함수 6종 + reports.target_type 제약 확장). 변경 파일:
+`lib/queries/board.ts`(신규), `app/actions/board.ts`(신규), `app/actions/reports.ts`,
+`app/(main)/board/*`(신규), `components/board/*`(신규), `components/layout/sidebar-nav.tsx`,
+`components/layout/bottom-nav.tsx`, `app/admin/reports/page.tsx`,
+`app/admin/reports/[reportId]/page.tsx`, `lib/supabase/middleware.ts`.
+
+**연관 PRD**: 없음(실사용 요청으로 신설된 범위)
+
+---
+
 ## 마일스톤 요약
 
 | Phase | 산출물 | 상태 |
@@ -1254,3 +1297,4 @@ Playwright 실제 클릭(SPA 네비게이션, `page.goto()`가 아님 — 처음
 | 9.1 | 배포 후 실사용 버그 수정 + 랜덤채팅 이탈 감지 개선 | 완료 |
 | 10 | 후속 검토 (범위 외) | 미착수 |
 | 11 | 쪽지(DM, 쪽지함 재설계) | 완료 |
+| 12 | 게시판(사용자 커뮤니티 보드) | 완료 |

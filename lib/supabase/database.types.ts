@@ -228,6 +228,92 @@ export type Database = {
           },
         ];
       };
+      post_comments: {
+        Row: {
+          author_id: string;
+          content: string;
+          created_at: string;
+          id: string;
+          is_deleted: boolean;
+          post_id: string;
+        };
+        Insert: {
+          author_id: string;
+          content: string;
+          created_at?: string;
+          id?: string;
+          is_deleted?: boolean;
+          post_id: string;
+        };
+        Update: {
+          author_id?: string;
+          content?: string;
+          created_at?: string;
+          id?: string;
+          is_deleted?: boolean;
+          post_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "post_comments_author_id_fkey";
+            columns: ["author_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "post_comments_post_id_fkey";
+            columns: ["post_id"];
+            isOneToOne: false;
+            referencedRelation: "posts";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      posts: {
+        Row: {
+          author_id: string;
+          content: string;
+          created_at: string;
+          id: string;
+          is_deleted: boolean;
+          tag: string;
+          title: string;
+          updated_at: string;
+          view_count: number;
+        };
+        Insert: {
+          author_id: string;
+          content: string;
+          created_at?: string;
+          id?: string;
+          is_deleted?: boolean;
+          tag: string;
+          title: string;
+          updated_at?: string;
+          view_count?: number;
+        };
+        Update: {
+          author_id?: string;
+          content?: string;
+          created_at?: string;
+          id?: string;
+          is_deleted?: boolean;
+          tag?: string;
+          title?: string;
+          updated_at?: string;
+          view_count?: number;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "posts_author_id_fkey";
+            columns: ["author_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       profiles: {
         Row: {
           age: number | null;
@@ -894,6 +980,19 @@ export type Database = {
       cleanup_old_room_archives: { Args: never; Returns: undefined };
       cleanup_stale_anonymous_users: { Args: never; Returns: undefined };
       cleanup_stale_random_queue: { Args: never; Returns: undefined };
+      create_post: {
+        Args: { p_content: string; p_tag: string; p_title: string };
+        Returns: string;
+      };
+      create_post_comment: {
+        Args: { p_content: string; p_post_id: string };
+        Returns: string;
+      };
+      delete_post: { Args: { p_post_id: string }; Returns: undefined };
+      delete_post_comment: {
+        Args: { p_comment_id: string };
+        Returns: undefined;
+      };
       end_abandoned_random_sessions: { Args: never; Returns: undefined };
       end_random_session: { Args: { p_session_id: string }; Returns: undefined };
       heartbeat_random_session: {
@@ -909,6 +1008,10 @@ export type Database = {
         Returns: undefined;
       };
       hide_dm_note: { Args: { p_note_id: string }; Returns: undefined };
+      increment_post_view_count: {
+        Args: { p_post_id: string };
+        Returns: undefined;
+      };
       is_admin: { Args: never; Returns: boolean };
       is_room_member: { Args: { p_room_id: string }; Returns: boolean };
       is_user_suspended: { Args: { p_user_id?: string }; Returns: boolean };
@@ -924,6 +1027,10 @@ export type Database = {
       list_orphaned_chat_images: { Args: never; Returns: string[] };
       mark_dm_note_read: { Args: { p_note_id: string }; Returns: undefined };
       match_or_wait: { Args: never; Returns: string };
+      post_comment_count: {
+        Args: { p: Database["public"]["Tables"]["posts"]["Row"] };
+        Returns: number;
+      };
       record_daily_activity: { Args: never; Returns: undefined };
       record_daily_stats_snapshot: { Args: never; Returns: undefined };
       room_member_count: {

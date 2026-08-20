@@ -11,7 +11,7 @@
 import { createClient } from "@/lib/supabase/server";
 import type { ActionResult } from "@/lib/types/forms";
 
-export type ReportTargetType = "room" | "random_session" | "message" | "user";
+export type ReportTargetType = "room" | "random_session" | "message" | "user" | "post" | "comment";
 export type ReportReason = "spam" | "abuse" | "illegal" | "other";
 
 export async function createReportAction(
