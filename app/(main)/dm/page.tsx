@@ -3,9 +3,17 @@ import { getCurrentUserClaims } from "@/lib/supabase/auth";
 import { getUserProfile } from "@/lib/queries/profile";
 import { getDmNoteList } from "@/lib/queries/dm";
 import { DmNoteList } from "@/components/dm/dm-note-list";
+import { DmPagination } from "@/components/dm/dm-pagination";
 import { Button } from "@/components/ui/button";
 
-export default async function DmListPage() {
+export default async function DmListPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ page?: string }>;
+}) {
+  const { page: pageParam } = await searchParams;
+  const page = Math.max(1, Number(pageParam) || 1);
+
   const claims = await getCurrentUserClaims();
   const userId = claims?.sub;
 
@@ -30,12 +38,17 @@ export default async function DmListPage() {
     );
   }
 
-  const notes = await getDmNoteList(userId!);
+  const { notes, pageSize, totalCount } = await getDmNoteList(userId!, page);
+  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
 
   return (
     <div className="mx-auto max-w-2xl space-y-4 px-4 py-6">
-      <h1 className="text-xl font-bold">쪽지</h1>
+      <div className="flex items-baseline justify-between">
+        <h1 className="text-xl font-bold">쪽지</h1>
+        <p className="text-muted-foreground text-xs">최근 7일간 주고받은 쪽지만 보관돼요</p>
+      </div>
       <DmNoteList notes={notes} />
+      <DmPagination currentPage={page} totalPages={totalPages} />
     </div>
   );
 }
