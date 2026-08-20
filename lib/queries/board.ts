@@ -4,6 +4,7 @@
  * 목록/상세는 게스트를 포함해 누구나 조회할 수 있다 — rooms 목록과 동일한 공개 열람 모델.
  */
 
+import { cache } from "react";
 import { createClient } from "@/lib/supabase/server";
 
 export type PostTag = "find_user" | "suggestion" | "etc";
@@ -119,7 +120,7 @@ interface PostCommentRow {
  * 게시글 상세 + 댓글 목록을 함께 조회한다. 조회수 증가(increment_post_view_count)는
  * 페이지 렌더와 무관한 부수효과라 별도로 fire-and-forget 호출한다(app/actions/board.ts).
  */
-export async function getPostDetail(postId: string): Promise<PostDetail | null> {
+export const getPostDetail = cache(async (postId: string): Promise<PostDetail | null> => {
   const supabase = await createClient();
 
   const [{ data: post, error: postError }, { data: comments }] = await Promise.all([
@@ -182,4 +183,4 @@ export async function getPostDetail(postId: string): Promise<PostDetail | null> 
         createdAt: row.created_at,
       })),
   };
-}
+});

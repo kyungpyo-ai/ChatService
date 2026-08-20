@@ -1274,6 +1274,93 @@ SECURITY DEFINER 함수를 `set_config('request.jwt.claim.sub', ...)`로 auth.ui
 
 ---
 
+## Phase 13 — 검색 노출(SEO) (계획 수립 완료, 구현 대기, 2026-08-20)
+
+**배경**: 서비스가 정식 운영 단계에 들어가면서 "랜덤채팅/익명채팅/방채팅" 등 핵심
+키워드로 검색 유입을 만들 필요가 생겼다. 사용자가 초안(사이트 SEO 기본 설정 →
+sitemap/robots → GSC/네이버 등록 → 콘텐츠 강화 → 외부 유입, 6단계)을 제시했고,
+Claude가 코드 현황을 확인해 보완한 뒤 아래로 확정했다.
+
+**현재 상태 확인 결과(작업 착수 전 기준)**:
+- `app/layout.tsx`에 타이틀/설명이 딱 하나만 있고 모든 페이지가 이걸 공유한다 —
+  `/rooms`, `/random`, `/board` 등 페이지별 `metadata`가 전무하다.
+- `app/robots.ts`, `app/sitemap.ts`, `app/manifest.ts` 모두 없음.
+- `app/opengraph-image.tsx`, `app/icon.tsx`는 Phase(리브랜딩)에서 이미 달나루
+  브랜드로 교체됨 — 그대로 재사용.
+
+**설계 결정**:
+- **noindex 범위는 개인/1:1 페이지로 한정**한다 — `/profile`, `/dm/*`, `/admin/*`,
+  `/rooms/[roomId]`(입장 후 실제 채팅방), `/random/[sessionId]`. 목록/소개
+  페이지(`/rooms`, `/random`, `/board`, `/board/[postId]`)는 검색 유입이 목적이므로
+  색인을 허용한다. `robots.txt`의 `Disallow`가 아니라 각 페이지의
+  `export const metadata = { robots: { index: false } }` (또는 레이아웃 단위)로
+  처리 — `robots.txt`만으로는 이미 색인된 페이지를 빼지 못하기 때문.
+- **페이지별 `metadata`/`generateMetadata` 골격 추가가 sitemap/robots보다 선행**한다.
+  sitemap에 넣을 "공개 페이지 목록" 자체가 이 작업으로 확정되기 때문.
+- **GSC/네이버 소유권 인증, 사이트맵 제출, 블로그·SNS 홍보처럼 사용자 계정 로그인이
+  필요한 단계는 코드/자동화 대상이 아니다** — 문서에 체크리스트로 남기고 Claude는
+  안내만 한다(대시보드 자동화 시도 안 함).
+- 구조화 데이터(JSON-LD `WebSite`)와 canonical 태그는 코드 작업(1~2단계)에 포함해
+  같이 처리한다 — 사용자 원안엔 없었지만 검색엔진이 사이트명을 정확히 이해하고
+  `?tag=`/`?page=` 쿼리로 갈리는 게시판·쪽지 목록을 중복 콘텐츠로 오인하지 않게
+  막는 데 필요.
+- 네이버는 기술 SEO(sitemap 제출 등)만으로는 노출이 잘 안 되는 검색엔진 특성상,
+  4단계(네이버 서치어드바이저)와 6단계(외부 유입)를 사실상 동시 진행 대상으로
+  묶는다 — 등록보다 콘텐츠·외부 링크 신호가 실질적으로 더 중요.
+
+**실행 계획**:
+
+1. **사이트 SEO 기본 설정** (코드)
+   - 공개 페이지(`/`, `/rooms`, `/random`, `/board`, `/board/[postId]`, `/legal/*`,
+     `/auth/login`, `/auth/sign-up`)에 `export const metadata`(또는 동적 상세 페이지는
+     `generateMetadata`)로 페이지별 title/description 추가. 핵심 키워드(랜덤채팅,
+     익명채팅, 방채팅, 무료 채팅)를 title/description/H1에 자연스럽게 포함.
+   - 개인/1:1 페이지(위 noindex 범위)에 `robots: { index: false, follow: false }` 추가.
+   - Open Graph/Twitter Card 메타(`app/layout.tsx`)의 서비스명이 전부 "달나루"로
+     통일됐는지 재확인.
+   - `JSON-LD WebSite` 스키마를 루트 레이아웃에 추가.
+2. **검색엔진용 파일 생성** (코드)
+   - `app/sitemap.ts` — 공개 페이지 목록(정적) + 게시판 상세(`/board/[postId]`, 동적,
+     Supabase에서 `is_deleted=false` 글 목록 조회)를 포함해 생성.
+   - `app/robots.ts` — 공개 경로는 허용, `/profile`, `/dm`, `/admin`, `/api/*`,
+     `/auth/*`(로그인 폼은 검색 노출 의미 없음) 등은 `Disallow`. `sitemap` 필드로
+     `sitemap.xml` 위치 명시.
+   - `app/manifest.ts` — PWA 매니페스트(이름 "달나루", 아이콘은 기존 `app/icon.tsx`
+     재사용) 신설 — 모바일 검색 결과·홈 화면 추가 노출에 영향.
+   - canonical URL — 쿼리 파라미터로 갈리는 `/board?tag=`, `/board?page=`,
+     `/dm?page=` 같은 페이지에 `alternates.canonical`을 페이지 기본 경로로 고정.
+3. **Google Search Console 등록** (사용자 수동 — Claude는 절차 안내만)
+   - [ ] `dalnaru.com` 소유권 인증(DNS TXT 또는 HTML 태그 — 도메인이 Vercel DNS에
+     있으므로 DNS TXT 레코드 추가는 Claude가 대행 가능, 인증 클릭 자체는 사용자)
+   - [ ] `sitemap.xml` 제출
+   - [ ] 메인/`/rooms`/`/random`/`/board` 색인 생성 요청
+   - [ ] 색인 상태·검색 노출 쿼리 주기적 확인
+4. **네이버 서치어드바이저 등록** (사용자 수동)
+   - [ ] `dalnaru.com` 소유권 인증
+   - [ ] `sitemap.xml` 제출
+   - [ ] `robots.txt` 정상 여부 확인
+   - [ ] 주요 페이지 수집 요청
+5. **SEO용 콘텐츠 강화** (코드 + 지속 운영)
+   - `/rooms`, `/random`, `/board` 각 목록 페이지 상단에 서비스 소개 문단(1~2단락)을
+     추가해 키워드 밀도와 텍스트 콘텐츠 자체를 보강(현재는 UI 컴포넌트 위주라 텍스트가
+     거의 없음).
+   - 공략 키워드: 랜덤채팅, 무료 랜덤채팅, 로그인 없는 랜덤채팅, 익명채팅, 무료 채팅,
+     방채팅, 익명 채팅방, 무료 채팅방.
+6. **외부 유입 및 사이트 인지도 확대** (사용자 수동, 지속 운영 — "완료" 개념 없음)
+   - [ ] 네이버 블로그 등에 달나루 소개
+   - [ ] SNS 공유
+   - [ ] 관련 커뮤니티 소개
+   - [ ] 외부 사이트發 backlink 확보
+
+**검증 방법**: `npm run build` 후 `/sitemap.xml`, `/robots.txt`, `/manifest.webmanifest`
+라우트를 브라우저로 직접 열어 정상 렌더링 확인. Lighthouse(Chrome DevTools 또는
+Playwright)로 SEO/Performance 점수 측정해 로드맵에 수치 기록. Google
+Rich Results Test로 JSON-LD 유효성 확인.
+
+**연관 PRD**: 없음(실사용 필요로 신설된 범위)
+
+---
+
 ## 마일스톤 요약
 
 | Phase | 산출물 | 상태 |
@@ -1298,3 +1385,4 @@ SECURITY DEFINER 함수를 `set_config('request.jwt.claim.sub', ...)`로 auth.ui
 | 10 | 후속 검토 (범위 외) | 미착수 |
 | 11 | 쪽지(DM, 쪽지함 재설계) | 완료 |
 | 12 | 게시판(사용자 커뮤니티 보드) | 완료 |
+| 13 | 검색 노출(SEO) | 계획 수립 완료, 구현 대기 |

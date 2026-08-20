@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { PenLine } from "lucide-react";
 import { TransitionLink } from "@/components/ui/transition-link";
 import { Button } from "@/components/ui/button";
@@ -16,6 +17,12 @@ const TAG_TABS: { value: PostTag | "all"; label: string }[] = [
 function isPostTag(value: string | undefined): value is PostTag {
   return value === "find_user" || value === "suggestion" || value === "etc";
 }
+
+export const metadata: Metadata = {
+  title: "게시판 — 사람찾기·건의사항 | 달나루",
+  description: "달나루 이용자들이 사람을 찾거나 서비스에 건의할 수 있는 커뮤니티 게시판.",
+  alternates: { canonical: "/board" },
+};
 
 export default async function BoardPage({
   searchParams,
@@ -40,6 +47,10 @@ export default async function BoardPage({
           </Button>
         </TransitionLink>
       </div>
+      <p className="text-muted-foreground -mt-2 text-sm">
+        사람을 찾거나 서비스에 건의하고 싶은 내용을 자유롭게 남겨보세요. 로그인 없이도 글을 읽을 수
+        있어요.
+      </p>
 
       <div className="flex gap-1 border-b">
         {TAG_TABS.map((t) => {

@@ -5,6 +5,12 @@
  * 흐름에서 링크로 열람 가능하도록 골격만 마련한다.
  */
 
+import type { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "이용약관 | 달나루",
+};
+
 export default function TermsPage() {
   return (
     <div className="mx-auto max-w-2xl px-6 py-12">

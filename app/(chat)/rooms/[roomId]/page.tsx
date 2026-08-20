@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
@@ -12,6 +13,10 @@ import { RoomChatView } from "@/components/rooms/room-chat-view";
 import { RoomJoinView } from "@/components/rooms/room-join-view";
 import { Button } from "@/components/ui/button";
 import { Ban, Users } from "lucide-react";
+
+export const metadata: Metadata = {
+  robots: { index: false, follow: false },
+};
 
 export default async function RoomChatPage({ params }: { params: Promise<{ roomId: string }> }) {
   const { roomId } = await params;

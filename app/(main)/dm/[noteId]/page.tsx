@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { getCurrentUserClaims } from "@/lib/supabase/auth";
@@ -5,6 +6,10 @@ import { getUserProfile } from "@/lib/queries/profile";
 import { getDmNoteDetail } from "@/lib/queries/dm";
 import { DmNoteDetailView } from "@/components/dm/dm-note-detail";
 import { Button } from "@/components/ui/button";
+
+export const metadata: Metadata = {
+  robots: { index: false, follow: false },
+};
 
 export default async function DmNoteDetailPage({
   params,
