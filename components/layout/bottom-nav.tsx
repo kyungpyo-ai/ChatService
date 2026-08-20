@@ -1,7 +1,7 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import { Home, Shuffle, MessagesSquare, Search, Mail, UserRound } from "lucide-react";
+import { Home, Shuffle, MessagesSquare, Search, Mail, UserRound, Newspaper } from "lucide-react";
 import { TransitionLink } from "@/components/ui/transition-link";
 import { cn } from "@/lib/utils";
 
@@ -10,6 +10,7 @@ const NAV_ITEMS = [
   { href: "/random", label: "랜덤", icon: Shuffle },
   { href: "/rooms", label: "방 목록", icon: MessagesSquare },
   { href: "/search", label: "검색", icon: Search },
+  { href: "/board", label: "게시판", icon: Newspaper },
   { href: "/dm", label: "쪽지", icon: Mail },
   { href: "/profile", label: "내 정보", icon: UserRound },
 ] as const;

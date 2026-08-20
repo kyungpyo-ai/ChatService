@@ -16,6 +16,8 @@ const TARGET_LABEL: Record<string, string> = {
   random_session: "랜덤채팅",
   message: "메시지",
   user: "사용자",
+  post: "게시글",
+  comment: "댓글",
 };
 
 /** 신고 큐 — 상태별(대기/처리완료/기각) 탭, 대상 유형·사유·신고일 목록(§DEVELOPMENT_PLAN 7.5.4). */
