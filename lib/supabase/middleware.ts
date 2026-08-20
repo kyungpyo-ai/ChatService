@@ -45,7 +45,10 @@ export async function updateSession(request: NextRequest) {
   const { data } = await supabase.auth.getClaims();
   const user = data?.claims;
 
-  // 게스트(비로그인)도 접근 가능한 공개 경로 — PRD상 랜덤채팅/방 목록은 로그인 없이 이용 가능
+  // 게스트(비로그인)도 접근 가능한 공개 경로 — PRD상 랜덤채팅/방 목록은 로그인 없이 이용 가능.
+  // 게시판(/board)도 목록/상세 열람은 게스트 포함 누구나 가능하다(rooms와 동일한 공개
+  // 열람 모델, §ROADMAP Phase 12) — 글쓰기(/board/new)만 로그인 필요, 이건 rooms/new와
+  // 동일하게 페이지 자체가 비로그인 안내 화면을 보여준다.
   //
   // /api/cron/*은 사용자 세션이 아니라 CRON_SECRET(Authorization 헤더)으로 스스로를 보호하는
   // 배치 전용 경로다. 여기서 걸러주지 않으면 세션이 없는 Vercel Cron 요청이 /auth/login으로
@@ -57,6 +60,7 @@ export async function updateSession(request: NextRequest) {
     request.nextUrl.pathname.startsWith("/api/build-version") ||
     request.nextUrl.pathname.startsWith("/random") ||
     request.nextUrl.pathname.startsWith("/rooms") ||
+    request.nextUrl.pathname.startsWith("/board") ||
     request.nextUrl.pathname.startsWith("/legal");
 
   if (!isPublicPath && !user) {
