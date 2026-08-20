@@ -1352,6 +1352,22 @@ Claude가 코드 현황을 확인해 보완한 뒤 아래로 확정했다.
    - [ ] 관련 커뮤니티 소개
    - [ ] 외부 사이트發 backlink 확보
 
+**버그 하나 발견 후 수정(1~2단계 구현 중)**: `middleware.ts`의 matcher는
+`_next/static`·이미지 확장자만 제외하고 나머지 모든 경로를 통과시키는데,
+`app/robots.ts`/`app/sitemap.ts`/`app/manifest.ts`/`app/icon.tsx`/
+`app/opengraph-image.tsx`가 생성하는 `/robots.txt`, `/sitemap.xml`,
+`/manifest.webmanifest`, `/icon`, `/opengraph-image`는 확장자 없는 Next.js 파일
+컨벤션 라우트라 이 제외 패턴에 안 걸리고 그대로 `lib/supabase/middleware.ts`의
+로그인 체크까지 도달했다. `isPublicPath` 목록에 없어 비로그인 요청(검색엔진
+크롤러·카카오톡/슬랙 링크 미리보기 봇 포함)이 전부 `/auth/login`으로
+리다이렉트되고 있었다 — Preview 배포에서 Vercel 보호 우회 쿠키로 실제
+`/robots.txt`를 요청해 `Location: /auth/login?redirect=%2Frobots.txt` 응답을
+직접 확인해 발견. `isPublicPath`에 다섯 경로를 명시적으로 추가해 해결.
+`app/icon.tsx`/`app/opengraph-image.tsx`는 리브랜딩(Phase 이전)부터 있었던
+라우트라, 이번에 처음 발견됐을 뿐 이전부터 존재하던 버그였다 — 즉 지금까지
+카카오톡 등에 링크를 공유해도 OG 이미지 미리보기가 정상적으로 뜨지 않았을
+가능성이 있다.
+
 **검증 방법**: `npm run build` 후 `/sitemap.xml`, `/robots.txt`, `/manifest.webmanifest`
 라우트를 브라우저로 직접 열어 정상 렌더링 확인. Lighthouse(Chrome DevTools 또는
 Playwright)로 SEO/Performance 점수 측정해 로드맵에 수치 기록. Google
