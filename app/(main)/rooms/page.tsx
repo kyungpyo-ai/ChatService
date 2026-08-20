@@ -28,7 +28,7 @@ export default async function RoomListPage() {
   return (
     <div className="animate-page-fade-in mx-auto max-w-3xl space-y-4 px-4 py-6">
       <div className="space-y-1">
-        <h1 className="text-xl font-bold">방채팅 — 자유롭게 만드는 무료 채팅방</h1>
+        <h1 className="text-xl font-bold">방채팅</h1>
         <p className="text-muted-foreground text-sm">
           마음에 드는 방에 바로 들어가 대화를 나눠보세요. 원하는 방이 없다면 직접 채팅방을 만들어
           사람들을 모을 수도 있어요.
