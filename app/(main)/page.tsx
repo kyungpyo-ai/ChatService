@@ -13,6 +13,8 @@ export default function HomePage() {
           </h1>
           <p className="text-muted-foreground text-sm">
             로그인 없는 랜덤채팅부터 직접 만드는 방채팅까지, 달나루에서 편하게 즐겨보세요.
+            <br />
+            지나간 대화는 아무에게도 남지 않아요.
           </p>
         </div>
 
