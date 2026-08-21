@@ -28,6 +28,11 @@ export const metadata: Metadata = {
     title,
     description,
   },
+  verification: {
+    other: {
+      "naver-site-verification": "a1140c96a3b343e3a1de75440c8f5aef026f8351",
+    },
+  },
 };
 
 const websiteJsonLd = {
