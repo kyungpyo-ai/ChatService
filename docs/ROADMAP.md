@@ -1341,8 +1341,8 @@ Claude가 코드 현황을 확인해 보완한 뒤 아래로 확정했다.
      `verification.other["naver-site-verification"]`로 Claude가 추가 후 배포, 인증
      클릭은 사용자가 수행
    - [x] `sitemap.xml` 제출
-   - [ ] `robots.txt` 정상 여부 확인
-   - [ ] 주요 페이지 수집 요청
+   - [x] `robots.txt` 정상 여부 확인
+   - [x] 주요 페이지 수집 요청
 5. **SEO용 콘텐츠 강화** (코드 + 지속 운영)
    - `/rooms`, `/random`, `/board` 각 목록 페이지 상단에 서비스 소개 문단(1~2단락)을
      추가해 키워드 밀도와 텍스트 콘텐츠 자체를 보강(현재는 UI 컴포넌트 위주라 텍스트가
