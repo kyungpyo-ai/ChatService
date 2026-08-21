@@ -1329,15 +1329,18 @@ Claude가 코드 현황을 확인해 보완한 뒤 아래로 확정했다.
      재사용) 신설 — 모바일 검색 결과·홈 화면 추가 노출에 영향.
    - canonical URL — 쿼리 파라미터로 갈리는 `/board?tag=`, `/board?page=`,
      `/dm?page=` 같은 페이지에 `alternates.canonical`을 페이지 기본 경로로 고정.
-3. **Google Search Console 등록** (사용자 수동 — Claude는 절차 안내만)
-   - [ ] `dalnaru.com` 소유권 인증(DNS TXT 또는 HTML 태그 — 도메인이 Vercel DNS에
-     있으므로 DNS TXT 레코드 추가는 Claude가 대행 가능, 인증 클릭 자체는 사용자)
-   - [ ] `sitemap.xml` 제출
-   - [ ] 메인/`/rooms`/`/random`/`/board` 색인 생성 요청
+3. **Google Search Console 등록** (사용자 수동 — Claude는 절차 안내만, 2026-08-22 진행)
+   - [x] `dalnaru.com` 소유권 인증 — DNS TXT 방식, Vercel DNS에 Claude가 레코드 추가,
+     인증 클릭은 사용자가 수행
+   - [x] `sitemap.xml` 제출 — 첫 시도 시 "가져올 수 없음"으로 떴으나(DNS 인증 직후라
+     구글 시스템에 소유권이 아직 전파되기 전으로 추정) 재시도 후 "성공"
+   - [ ] 메인/`/rooms`/`/random`/`/board` 색인 생성 요청 (선택, URL 검사 도구로 수동 요청 가능)
    - [ ] 색인 상태·검색 노출 쿼리 주기적 확인
-4. **네이버 서치어드바이저 등록** (사용자 수동)
-   - [ ] `dalnaru.com` 소유권 인증
-   - [ ] `sitemap.xml` 제출
+4. **네이버 서치어드바이저 등록** (사용자 수동, 2026-08-22 진행)
+   - [x] `dalnaru.com` 소유권 인증 — HTML 태그 방식, `app/layout.tsx` metadata의
+     `verification.other["naver-site-verification"]`로 Claude가 추가 후 배포, 인증
+     클릭은 사용자가 수행
+   - [x] `sitemap.xml` 제출
    - [ ] `robots.txt` 정상 여부 확인
    - [ ] 주요 페이지 수집 요청
 5. **SEO용 콘텐츠 강화** (코드 + 지속 운영)
