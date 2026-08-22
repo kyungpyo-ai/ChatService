@@ -86,7 +86,10 @@ export async function createRoomAction(
       .single();
 
     if (insertError || !room) {
-      return { success: false, message: "방 생성에 실패했습니다." };
+      const message = insertError?.message.includes("max_rooms_exceeded")
+        ? "방은 1인당 최대 3개까지 만들 수 있습니다."
+        : "방 생성에 실패했습니다.";
+      return { success: false, message };
     }
 
     revalidatePath("/rooms");
