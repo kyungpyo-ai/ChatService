@@ -62,8 +62,8 @@ export function RoomCard({ room, currentUserId }: RoomCardProps) {
         <span className="bg-brand-muted text-brand rounded px-1.5 py-0.5 text-xs font-semibold">
           방장
         </span>
-        {/* 닉네임은 최대 6자(lib/schemas/profile.ts)로 제한되므로 고정 폭으로도 잘리지 않는다 */}
-        <span className="w-24 shrink-0 truncate font-medium">{room.ownerNickname}</span>
+        {/* 닉네임은 최대 8자(lib/schemas/profile.ts)로 제한되므로 고정 폭으로도 잘리지 않는다 */}
+        <span className="w-32 shrink-0 truncate font-medium">{room.ownerNickname}</span>
         {room.ownerGender === "male" ? (
           <Mars size={14} className="shrink-0 text-blue-500" />
         ) : (

@@ -37,8 +37,8 @@ const ageSchema = z
 export const setupProfileSchema = z.object({
   username: z
     .string()
-    .min(3, "닉네임은 최소 3자 이상이어야 합니다")
-    .max(6, "닉네임은 최대 6자까지 가능합니다")
+    .min(2, "닉네임은 최소 2자 이상이어야 합니다")
+    .max(8, "닉네임은 최대 8자까지 가능합니다")
     .regex(/^[a-zA-Z0-9가-힣_]+$/, "닉네임은 영문, 숫자, 한글, _만 사용 가능합니다")
     .refine((v) => !containsBannedWord(v), "닉네임에 부적절한 표현이 포함되어 있습니다"),
   gender: genderSchema,
@@ -55,8 +55,8 @@ export const setupProfileSchema = z.object({
 export const updateProfileSchema = z.object({
   username: z
     .string()
-    .min(3, "닉네임은 최소 3자 이상이어야 합니다")
-    .max(6, "닉네임은 최대 6자까지 가능합니다")
+    .min(2, "닉네임은 최소 2자 이상이어야 합니다")
+    .max(8, "닉네임은 최대 8자까지 가능합니다")
     .regex(/^[a-zA-Z0-9가-힣_]+$/, "닉네임은 영문, 숫자, 한글, _만 사용 가능합니다")
     .refine((v) => !containsBannedWord(v), "닉네임에 부적절한 표현이 포함되어 있습니다")
     .optional(),

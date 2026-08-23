@@ -11,7 +11,7 @@ export default function HomePage() {
           <h1 className="text-2xl font-bold" style={{ fontFamily: "var(--font-display)" }}>
             익명채팅으로 시작하는 새로운 대화 👋
           </h1>
-          <p className="text-muted-foreground text-sm">
+          <p className="text-muted-foreground text-sm text-pretty">
             로그인 없는 랜덤채팅부터 직접 만드는 방채팅까지, 달나루에서 편하게 즐겨보세요.
             <br />
             지나간 대화는 아무에게도 남지 않아요.

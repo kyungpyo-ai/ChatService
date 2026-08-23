@@ -47,7 +47,7 @@ export default async function BoardPage({
           </Button>
         </TransitionLink>
       </div>
-      <p className="text-muted-foreground -mt-2 text-sm">
+      <p className="text-muted-foreground -mt-2 text-sm text-pretty">
         사람을 찾거나 서비스에 건의하고 싶은 내용을 자유롭게 남겨보세요.
         <br />
         로그인 없이도 글을 읽을 수 있어요.

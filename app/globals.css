@@ -248,6 +248,12 @@
 body {
   background-color: var(--background);
   color: var(--foreground);
+  /* 한글은 word-break 기본값(normal)에서 음절 단위로 아무데서나 줄바꿈될 수 있어
+     "대화" 같은 짧은 단어 중간에서 줄이 끊겨 보이는 문제가 있다 — 어절 단위로만
+     줄바꿈되도록 강제한다. 단, 긴 URL 등 공백 없는 문자열은 keep-all만으로는
+     넘칠 수 있어 overflow-wrap으로 최후 수단 줄바꿈을 함께 허용한다. */
+  word-break: keep-all;
+  overflow-wrap: break-word;
 }
 
 @layer base {

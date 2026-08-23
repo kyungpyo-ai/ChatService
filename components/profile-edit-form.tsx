@@ -171,7 +171,7 @@ export function ProfileEditForm({ profile }: ProfileEditFormProps) {
                     <Input placeholder="예: coder1" {...field} disabled={isSubmitting} />
                   </FormControl>
                   <FormDescription>
-                    3-6자의 영문, 숫자, 한글, 언더스코어(_)만 사용 가능합니다.
+                    2-8자의 영문, 숫자, 한글, 언더스코어(_)만 사용 가능합니다.
                   </FormDescription>
                   {usernameAvailable === false && (
                     <p className="text-sm text-red-500">이미 사용 중인 닉네임입니다</p>

@@ -116,7 +116,7 @@ export function SetupProfileForm({ suggestedUsername, redirectPath }: SetupProfi
                 <Input placeholder="예: 김민준123" {...field} disabled={isSubmitting} />
               </FormControl>
               <FormDescription>
-                3-6자의 영문, 숫자, 한글, 언더스코어(_)만 사용 가능합니다.
+                2-8자의 영문, 숫자, 한글, 언더스코어(_)만 사용 가능합니다.
               </FormDescription>
               <FormMessage />
             </FormItem>
