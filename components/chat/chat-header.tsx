@@ -1,6 +1,15 @@
 "use client";
 
-import { ChevronLeft, Flag, LogOut, MoreVertical, ShieldCheck, Users } from "lucide-react";
+import {
+  Bell,
+  BellOff,
+  ChevronLeft,
+  Flag,
+  LogOut,
+  MoreVertical,
+  ShieldCheck,
+  Users,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { TransitionLink } from "@/components/ui/transition-link";
 import {
@@ -17,6 +26,9 @@ interface ChatHeaderProps {
   maxMembers?: number;
   onOpenParticipants?: () => void;
   safetyLabel?: string;
+  /** 지정하면 헤더에 알림 켜기/끄기 토글 버튼이 표시된다 (§lib/utils/notify.ts) */
+  notificationsEnabled?: boolean;
+  onToggleNotifications?: () => void;
   onLeave?: () => void;
   leaveLabel?: string;
   /** "더보기" 드롭다운의 "신고하기" 항목 클릭 핸들러 — 없으면 더보기 메뉴 자체가 숨겨진다 */
@@ -38,6 +50,8 @@ export function ChatHeader({
   maxMembers,
   onOpenParticipants,
   safetyLabel = "안심",
+  notificationsEnabled,
+  onToggleNotifications,
   onLeave,
   leaveLabel = "나가기",
   onReport,
@@ -76,6 +90,18 @@ export function ChatHeader({
         <ShieldCheck size={14} />
         {safetyLabel}
       </Button>
+
+      {onToggleNotifications && (
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={onToggleNotifications}
+          aria-label={notificationsEnabled ? "알림 끄기" : "알림 켜기"}
+          className="text-muted-foreground"
+        >
+          {notificationsEnabled ? <Bell size={18} /> : <BellOff size={18} />}
+        </Button>
+      )}
 
       {onOpenParticipants && (
         <Button

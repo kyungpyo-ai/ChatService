@@ -15,6 +15,7 @@ import { useRoomHeartbeat } from "@/lib/hooks/use-room-heartbeat";
 import { kickMemberAction, leaveRoomAction } from "@/app/actions/rooms";
 import { showError, showInfo } from "@/lib/utils/toast";
 import { formatChatDate, isSameLocalDate } from "@/lib/utils/date";
+import { isRoomNotificationsEnabled, setRoomNotificationsEnabled } from "@/lib/utils/notify";
 import type { RoomMember } from "@/lib/queries/rooms";
 
 interface RoomChatViewProps {
@@ -41,6 +42,21 @@ export function RoomChatView({
   const [participantsOpen, setParticipantsOpen] = useState(false);
   const [leaveDialogOpen, setLeaveDialogOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
+  // localStorage는 서버 렌더에서 읽을 수 없으므로, 하이드레이션 불일치를 피하려면
+  // 마운트 이후에만 실제 값을 반영해야 한다(§components/theme-switcher.tsx와 동일 패턴).
+  const [notificationsEnabled, setNotificationsEnabled] = useState(true);
+  useEffect(() => {
+    // 의도적인 마운트 후 동기화 — 서버/클라이언트 hydration 불일치를 피하기 위함
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setNotificationsEnabled(isRoomNotificationsEnabled(roomId));
+  }, [roomId]);
+  const handleToggleNotifications = () => {
+    setNotificationsEnabled((prev) => {
+      const next = !prev;
+      setRoomNotificationsEnabled(roomId, next);
+      return next;
+    });
+  };
   const {
     messages,
     participants,
@@ -160,6 +176,8 @@ export function RoomChatView({
           backHref="/rooms"
           memberCount={memberCount}
           maxMembers={maxMembers}
+          notificationsEnabled={notificationsEnabled}
+          onToggleNotifications={handleToggleNotifications}
           onOpenParticipants={() => setParticipantsOpen(true)}
           onLeave={() => setLeaveDialogOpen(true)}
           onReport={() => setReportOpen(true)}

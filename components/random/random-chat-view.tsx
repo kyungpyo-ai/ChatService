@@ -13,6 +13,7 @@ import { useSingleTabLock } from "@/lib/hooks/use-single-tab-lock";
 import { useHeartbeat } from "@/lib/hooks/use-heartbeat";
 import { endRandomSessionAction } from "@/app/actions/random";
 import { showError, showInfo } from "@/lib/utils/toast";
+import { isGlobalNotificationsEnabled, setGlobalNotificationsEnabled } from "@/lib/utils/notify";
 
 interface RandomChatViewProps {
   sessionId: string;
@@ -73,6 +74,21 @@ function RandomChatViewActive({
   useHeartbeat();
   const [endedByMe, setEndedByMe] = useState(initialEndedByMe);
   const [reportOpen, setReportOpen] = useState(false);
+  // localStorage는 서버 렌더에서 읽을 수 없으므로, 하이드레이션 불일치를 피하려면
+  // 마운트 이후에만 실제 값을 반영해야 한다(§components/theme-switcher.tsx와 동일 패턴).
+  const [notificationsEnabled, setNotificationsEnabled] = useState(true);
+  useEffect(() => {
+    // 의도적인 마운트 후 동기화 — 서버/클라이언트 hydration 불일치를 피하기 위함
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setNotificationsEnabled(isGlobalNotificationsEnabled());
+  }, []);
+  const handleToggleNotifications = () => {
+    setNotificationsEnabled((prev) => {
+      const next = !prev;
+      setGlobalNotificationsEnabled(next);
+      return next;
+    });
+  };
   const { messages, partnerEnded, sendMessage, sendImageMessage } = useRandomSessionMessages(
     sessionId,
     initialMessages,
@@ -140,6 +156,8 @@ function RandomChatViewActive({
         title="익명과의 대화"
         backHref="/"
         onBackClick={handleBack}
+        notificationsEnabled={notificationsEnabled}
+        onToggleNotifications={handleToggleNotifications}
         onLeave={sessionEnded ? undefined : () => void handleEnd()}
         leaveLabel="종료"
         onReport={() => setReportOpen(true)}
