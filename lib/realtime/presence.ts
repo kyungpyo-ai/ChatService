@@ -4,12 +4,6 @@ import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { isRoomNotificationsEnabled, notifyIfTabHidden } from "@/lib/utils/notify";
 
-/**
- * 방채팅 온라인 상태 구독 (Realtime Presence)
- *
- * room_members(멤버십, 영구)와 별개로 "지금 이 방 화면을 열어둔 사람"만 추적한다.
- * 새로고침/네트워크 순단에도 멤버십이 사라지지 않도록 하기 위해 멤버십과는 분리된 개념으로 둔다.
- */
 // 구독 직후 한동안(연결 수립 + 초기 상태 동기화 시간) 도착하는 join은 "이미 있던 사람"이
 // 뒤늦게 보고되는 것일 뿐, 진짜 새로 온라인이 된 게 아니다 — sync 이벤트 하나만으로 구분하려
 // 했더니 sync가 빈 상태로 먼저 오고 이미 있던 사람의 join이 그 뒤에 도착하는 레이스가
@@ -24,7 +18,10 @@ const PRESENCE_SETTLE_GRACE_MS = 2000;
  * 새로고침/네트워크 순단에도 멤버십이 사라지지 않도록 하기 위해 멤버십과는 분리된 개념으로 둔다.
  */
 export function useRoomPresence(roomId: string, userId: string): Set<string> {
-  const [onlineUserIds, setOnlineUserIds] = useState<Set<string>>(new Set());
+  // 본인은 이 화면을 렌더링하고 있는 시점에 이미 사실상 온라인이므로, 서버 왕복(채널 연결 +
+  // track() 브로드캐스트)을 기다리지 않고 마운트 즉시 온라인으로 낙관적 반영한다
+  // (§실사용 피드백 2026-08-24 — "방 접속하면 바로 온라인이어야 하는거 아니냐").
+  const [onlineUserIds, setOnlineUserIds] = useState<Set<string>>(() => new Set([userId]));
   const mountedAtRef = useRef(0);
 
   useEffect(() => {
