@@ -109,7 +109,10 @@ export function notifyIfTabHidden() {
 }
 
 const recentNotifyKeys = new Map<string, number>();
-const NOTIFY_DEDUP_WINDOW_MS = 5000;
+// 같은 입장 이벤트에 대한 두 신호(DB INSERT/Presence join) 사이의 실제 격차(보통 1초 안팎)만
+// 덮으면 충분하다 — 너무 길게 잡으면 "나갔다가 금방 다시 들어오는" 진짜 새 입장까지 중복으로
+// 오인해 알림이 안 울리는 문제가 있었다(§실사용 확인 2026-08-24).
+const NOTIFY_DEDUP_WINDOW_MS = 2000;
 
 /**
  * 방 입장은 room_members INSERT(빠름, DB 쓰기 직후 도착)와 Presence join(느림, 채널 연결+
