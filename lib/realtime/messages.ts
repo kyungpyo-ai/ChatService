@@ -18,7 +18,7 @@ import {
 } from "@/lib/storage/chat-images";
 import { showError } from "@/lib/utils/toast";
 import { generateTempId } from "@/lib/utils/temp-id";
-import { isRoomNotificationsEnabled, notifyIfTabHidden } from "@/lib/utils/notify";
+import { claimNotifyOnce, isRoomNotificationsEnabled, notifyIfTabHidden } from "@/lib/utils/notify";
 import type { ChatMessage } from "@/components/chat/chat-message-bubble";
 import type { RoomMember } from "@/lib/queries/rooms";
 
@@ -279,9 +279,16 @@ export function useRoomMessages(
                 createdAt: now,
                 isSystemNotice: true,
               });
-              // 알림음은 여기서 울리지 않는다 — 새 멤버가 들어오면 room_members INSERT(여기)와
-              // Presence join(§lib/realtime/presence.ts)이 거의 동시에 발생해 중복으로 울리므로,
-              // "온라인이 됨" 신호인 Presence 쪽 한 곳에서만 담당한다.
+              // 새 멤버가 들어오면 이 신호(room_members INSERT, DB 쓰기 직후 빠르게 도착)와
+              // Presence join(§lib/realtime/presence.ts, 채널 연결+track() 왕복이 필요해 느림)이
+              // 거의 동시에 발생한다 — claimNotifyOnce로 같은 사람에 대해 먼저 도착한 신호만
+              // 알림음을 울리고 뒤늦게 오는 나머지는 건너뛴다.
+              if (
+                isRoomNotificationsEnabled(roomId) &&
+                claimNotifyOnce(`room-join:${roomId}:${p.id}`)
+              ) {
+                notifyIfTabHidden();
+              }
             }
             for (const p of left) {
               if (p.id === currentUserId) continue;

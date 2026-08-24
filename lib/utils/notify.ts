@@ -107,3 +107,23 @@ export function notifyIfTabHidden() {
   if (!isTabInBackground()) return;
   playChime();
 }
+
+const recentNotifyKeys = new Map<string, number>();
+const NOTIFY_DEDUP_WINDOW_MS = 5000;
+
+/**
+ * 방 입장은 room_members INSERT(빠름, DB 쓰기 직후 도착)와 Presence join(느림, 채널 연결+
+ * track() 왕복 필요) 두 신호로 동시에 감지된다 — 새 멤버가 들어오면 둘 다 울리므로, 느린
+ * 쪽만 남기면 알림이 늦어지고 둘 다 울리면 중복된다. 그래서 "같은 대상에 대해 먼저 도착한
+ * 신호가 우선"하도록 하되 중복은 걸러낸다: 이 함수를 호출한 쪽이 먼저면 true(알림 진행),
+ * 이미 다른 신호가 같은 key로 최근에 처리했으면 false(건너뜀)를 반환한다.
+ */
+export function claimNotifyOnce(key: string): boolean {
+  const now = Date.now();
+  for (const [k, t] of recentNotifyKeys) {
+    if (now - t > NOTIFY_DEDUP_WINDOW_MS) recentNotifyKeys.delete(k);
+  }
+  if (recentNotifyKeys.has(key)) return false;
+  recentNotifyKeys.set(key, now);
+  return true;
+}
