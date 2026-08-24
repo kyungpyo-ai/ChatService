@@ -68,8 +68,37 @@ export function RoomChatView({
     sendMessage,
     sendImageMessage,
   } = useRoomMessages(roomId, initialMessages, initialParticipants, currentUserId);
-  const onlineUserIds = useRoomPresence(roomId, currentUserId);
+  const presenceOnlineUserIds = useRoomPresence(roomId, currentUserId);
   useRoomHeartbeat(roomId);
+  // Presence는 채널 연결 + track() 왕복이 끝나야 다른 사람에게 "온라인"으로 보이므로,
+  // 새로 들어온 참여자를 다른 사람들 화면에서는 실제보다 늦게 온라인으로 표시하는 지연이
+  // 있었다(§실사용 확인 2026-08-24). room_members에 새로 나타난(=방금 들어온) 참여자는
+  // Presence 확인을 기다리지 않고 바로 온라인으로 낙관적 반영하고, 잠시 뒤 이 낙관값을
+  // 지워서 이후로는 Presence의 실제 값(끊기면 오프라인으로도 바뀔 수 있어야 하므로)을 따른다.
+  const prevParticipantIdsRef = useRef<Set<string>>(new Set(initialParticipants.map((p) => p.id)));
+  const [recentlyJoinedIds, setRecentlyJoinedIds] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    const currentIds = new Set(participants.map((p) => p.id));
+    const newlyJoined = participants
+      .map((p) => p.id)
+      .filter((id) => id !== currentUserId && !prevParticipantIdsRef.current.has(id));
+    prevParticipantIdsRef.current = currentIds;
+    if (newlyJoined.length === 0) return;
+
+    setRecentlyJoinedIds((prev) => new Set([...prev, ...newlyJoined]));
+    const timer = setTimeout(() => {
+      setRecentlyJoinedIds((prev) => {
+        const next = new Set(prev);
+        newlyJoined.forEach((id) => next.delete(id));
+        return next;
+      });
+    }, 5000);
+    return () => clearTimeout(timer);
+  }, [participants, currentUserId]);
+  const onlineUserIds =
+    recentlyJoinedIds.size === 0
+      ? presenceOnlineUserIds
+      : new Set([...presenceOnlineUserIds, ...recentlyJoinedIds]);
   const isOwner = participants.some((p) => p.id === currentUserId && p.isOwner);
   const memberCount = participants.length;
   const scrollContainerRef = useRef<HTMLDivElement>(null);
