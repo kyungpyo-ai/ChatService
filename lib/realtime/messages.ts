@@ -18,11 +18,7 @@ import {
 } from "@/lib/storage/chat-images";
 import { showError } from "@/lib/utils/toast";
 import { generateTempId } from "@/lib/utils/temp-id";
-import {
-  isRoomNotificationsEnabled,
-  notifyIfTabHidden,
-  requestNotificationPermission,
-} from "@/lib/utils/notify";
+import { isRoomNotificationsEnabled, notifyIfTabHidden } from "@/lib/utils/notify";
 import type { ChatMessage } from "@/components/chat/chat-message-bubble";
 import type { RoomMember } from "@/lib/queries/rooms";
 
@@ -119,8 +115,6 @@ export function useRoomMessages(
   const pendingSendsRef = useRef<PendingSend[]>([]);
 
   useEffect(() => {
-    requestNotificationPermission();
-
     const supabase = createClient();
     let channels: ReturnType<typeof supabase.channel>[] = [];
     let cancelled = false;
@@ -199,10 +193,7 @@ export function useRoomMessages(
             });
 
             if (isRoomNotificationsEnabled(roomId)) {
-              notifyIfTabHidden(
-                `${sender?.nickname ?? "익명"}님의 새 메시지`,
-                row.content_type === "text" ? row.content : "사진을 보냈습니다"
-              );
+              notifyIfTabHidden();
             }
           }
         )
@@ -289,10 +280,7 @@ export function useRoomMessages(
                 isSystemNotice: true,
               });
               if (isRoomNotificationsEnabled(roomId)) {
-                notifyIfTabHidden(
-                  `${p.nickname}님이 입장했습니다`,
-                  "채팅방으로 이동해 대화를 시작해보세요"
-                );
+                notifyIfTabHidden();
               }
             }
             for (const p of left) {

@@ -15,11 +15,7 @@ import {
 } from "@/lib/storage/chat-images";
 import { showError } from "@/lib/utils/toast";
 import { generateTempId } from "@/lib/utils/temp-id";
-import {
-  isGlobalNotificationsEnabled,
-  notifyIfTabHidden,
-  requestNotificationPermission,
-} from "@/lib/utils/notify";
+import { isGlobalNotificationsEnabled, notifyIfTabHidden } from "@/lib/utils/notify";
 import type { ChatMessage } from "@/components/chat/chat-message-bubble";
 
 /**
@@ -146,8 +142,6 @@ export function useRandomSessionMessages(
   const suspicionTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    requestNotificationPermission();
-
     const supabase = createClient();
     let channels: ReturnType<typeof supabase.channel>[] = [];
     let cancelled = false;
@@ -228,10 +222,7 @@ export function useRandomSessionMessages(
             });
 
             if (isGlobalNotificationsEnabled()) {
-              notifyIfTabHidden(
-                "상대방의 새 메시지",
-                row.content_type === "text" ? row.content : "사진을 보냈습니다"
-              );
+              notifyIfTabHidden();
             }
           }
         )

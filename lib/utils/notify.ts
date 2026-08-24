@@ -42,17 +42,6 @@ function playChime() {
   });
 }
 
-/**
- * 브라우저 알림 권한을 요청한다. 이미 허용/거부된 상태면 아무것도 하지 않는다
- * (매번 재요청하면 브라우저가 자동으로 프롬프트를 억제하므로 "default" 상태에서만 시도).
- */
-export function requestNotificationPermission() {
-  if (typeof window === "undefined" || !("Notification" in window)) return;
-  if (Notification.permission === "default") {
-    void Notification.requestPermission();
-  }
-}
-
 const ROOM_NOTIFY_KEY_PREFIX = "room-notify:";
 
 /** 방채팅 화면의 "알림 켜기/끄기" 토글 상태 — 기본값은 켜짐. */
@@ -110,19 +99,11 @@ function isTabInBackground(): boolean {
 }
 
 /**
- * 지금 창/탭을 보고 있지 않을 때만(다른 탭 전환, 최소화, 다른 앱 창에 가려짐 등) 알림음 +
- * 브라우저 알림을 띄운다. 보고 있는 중이면 이미 화면에 내용이 보이므로 알림을 생략한다.
+ * 지금 창/탭을 보고 있지 않을 때만(다른 탭 전환, 최소화, 다른 앱 창에 가려짐 등) 알림음을
+ * 울린다. 보고 있는 중이면 이미 화면에 내용이 보이므로 생략한다. 브라우저/OS 알림 팝업은
+ * 띄우지 않는다(§실사용 피드백 2026-08-24 — 소리만으로 충분하고 팝업은 불필요하다는 판단).
  */
-export function notifyIfTabHidden(title: string, body: string) {
+export function notifyIfTabHidden() {
   if (!isTabInBackground()) return;
-
   playChime();
-
-  if ("Notification" in window && Notification.permission === "granted") {
-    const notification = new Notification(title, { body });
-    notification.onclick = () => {
-      window.focus();
-      notification.close();
-    };
-  }
 }
