@@ -99,11 +99,22 @@ export function setGlobalNotificationsEnabled(enabled: boolean) {
 }
 
 /**
- * 탭이 비활성 상태(다른 탭 보는 중 / 다른 창으로 전환 / 최소화)일 때만 알림음 + 브라우저
- * 알림을 띄운다. 탭을 보고 있는 중이면 이미 화면에 내용이 보이므로 알림을 생략한다.
+ * 지금 이 창/탭을 실제로 보고 있는 중인지 판단한다. document.hidden만으로는 "다른 탭으로
+ * 전환/최소화"만 잡히고, 브라우저 창 자체는 열려있는데 다른 앱 창에 가려진 경우는 탭
+ * 입장에서 여전히 "보이는 상태"라 놓친다(§실사용 확인 2026-08-24) — document.hasFocus()를
+ * 더해 "창이 실제로 포커스를 갖고 있는지"까지 함께 봐야 이 경우도 잡힌다.
+ */
+function isTabInBackground(): boolean {
+  if (typeof document === "undefined") return false;
+  return document.hidden || !document.hasFocus();
+}
+
+/**
+ * 지금 창/탭을 보고 있지 않을 때만(다른 탭 전환, 최소화, 다른 앱 창에 가려짐 등) 알림음 +
+ * 브라우저 알림을 띄운다. 보고 있는 중이면 이미 화면에 내용이 보이므로 알림을 생략한다.
  */
 export function notifyIfTabHidden(title: string, body: string) {
-  if (typeof document === "undefined" || !document.hidden) return;
+  if (!isTabInBackground()) return;
 
   playChime();
 
