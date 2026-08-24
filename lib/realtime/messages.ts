@@ -279,9 +279,9 @@ export function useRoomMessages(
                 createdAt: now,
                 isSystemNotice: true,
               });
-              if (isRoomNotificationsEnabled(roomId)) {
-                notifyIfTabHidden();
-              }
+              // 알림음은 여기서 울리지 않는다 — 새 멤버가 들어오면 room_members INSERT(여기)와
+              // Presence join(§lib/realtime/presence.ts)이 거의 동시에 발생해 중복으로 울리므로,
+              // "온라인이 됨" 신호인 Presence 쪽 한 곳에서만 담당한다.
             }
             for (const p of left) {
               if (p.id === currentUserId) continue;
