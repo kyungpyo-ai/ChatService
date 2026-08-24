@@ -109,28 +109,49 @@ export function notifyIfTabHidden() {
 }
 
 type JoinSignalSource = "db" | "presence";
-const pendingJoinSignals = new Map<string, JoinSignalSource>();
+const pendingJoinCounts = new Map<string, Record<JoinSignalSource, number>>();
+// 두 신호 중 하나가 끝내 도착하지 않는 경우(연결 실패 등)를 대비한 안전망 — 정상적인 쌍은
+// 보통 몇 초 안에 맞춰지므로, 이 시간이 지나도 안 맞은 신호는 미아로 보고 카운트를 되돌린다.
+const ORPHAN_SIGNAL_TIMEOUT_MS = 15000;
 
 /**
  * 방 입장은 room_members INSERT(빠름, DB 쓰기 직후 도착)와 Presence join(느림, 채널 연결+
  * track() 왕복 필요) 두 신호로 감지된다 — 새 멤버가 들어오면 둘 다 울리므로 그대로 두면
  * 중복이다. 시간 창으로 걸러내려 했더니(예: "2초 안의 join은 중복") 두 신호 사이 실제
  * 간격이 매번 달라서 창을 넉넉히 잡으면 빠른 재입장이 씹히고, 짧게 잡으면 가끔 중복이
- * 그대로 통과했다(§실사용 확인 2026-08-24). 그래서 시간 대신 "이 사람에 대해 두 신호가
- * 각각 정확히 한 번씩 왔는지"를 추적한다: 한쪽 신호가 오면 알리고 대기시켜두다가, 다른
- * 쪽 신호가 오면 그 쌍을 소비하고 상태를 지운다(중복 없이, 다음 재입장을 위해 깨끗한
- * 상태로 되돌아감) — 같은 쪽 신호가 대기 중에 또 오면(예: 재구독) 무시한다.
+ * 그대로 통과했다(§실사용 확인 2026-08-24). "짝이 하나만 대기 가능"한 구조로 바꿨더니도
+ * 이번엔 짝이 맞기 전에 같은 쪽 신호가 또 오면(예: 짝이 오기 전에 아주 빠르게 나갔다
+ * 다시 들어온 경우) 그 진짜 새 입장이 무시되는 구멍이 있었다(§실사용 확인 2026-08-25).
+ *
+ * 그래서 "대기 중 하나"가 아니라 종류별 미짝(unmatched) 개수를 센다: 신호가 오면 반대
+ * 종류의 미짝이 있는지 먼저 본다 — 있으면 그걸 소비하고 조용히 끝낸다(짝 완성, 이미 첫
+ * 신호에서 알렸으므로). 없으면 이 신호가 자기 종류의 새 미짝이 되어 알림을 울린다. 이러면
+ * 짝이 맞기 전에 같은 종류 신호가 연달아 와도(빠른 연속 재입장) 매번 새로 알림이 울린다.
  */
 export function claimJoinSignal(key: string, source: JoinSignalSource): boolean {
-  const pending = pendingJoinSignals.get(key);
+  const other: JoinSignalSource = source === "db" ? "presence" : "db";
+  const counts = pendingJoinCounts.get(key) ?? { db: 0, presence: 0 };
 
-  if (pending === undefined) {
-    pendingJoinSignals.set(key, source);
-    return true; // 이 쌍의 첫 신호 — 알림
+  if (counts[other] > 0) {
+    counts[other] -= 1;
+    if (counts.db === 0 && counts.presence === 0) {
+      pendingJoinCounts.delete(key);
+    } else {
+      pendingJoinCounts.set(key, counts);
+    }
+    return false; // 짝 완성 — 이미 반대 신호가 도착했을 때 알렸으므로 다시 알리지 않음
   }
-  if (pending === source) {
-    return false; // 같은 쪽 신호 중복 도착 — 무시
-  }
-  pendingJoinSignals.delete(key); // 쌍이 완성됨 — 다음 재입장을 위해 상태 초기화
-  return false; // 이미 첫 신호에서 알렸으므로 다시 알리지 않음
+
+  counts[source] += 1;
+  pendingJoinCounts.set(key, counts);
+  setTimeout(() => {
+    const current = pendingJoinCounts.get(key);
+    if (!current || current[source] === 0) return;
+    current[source] -= 1;
+    if (current.db === 0 && current.presence === 0) {
+      pendingJoinCounts.delete(key);
+    }
+  }, ORPHAN_SIGNAL_TIMEOUT_MS);
+
+  return true; // 새 미짝 — 알림
 }
