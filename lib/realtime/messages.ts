@@ -18,6 +18,7 @@ import {
 } from "@/lib/storage/chat-images";
 import { showError } from "@/lib/utils/toast";
 import { generateTempId } from "@/lib/utils/temp-id";
+import { claimJoinSignal, isRoomNotificationsEnabled, notifyIfTabHidden } from "@/lib/utils/notify";
 import type { ChatMessage } from "@/components/chat/chat-message-bubble";
 import type { RoomMember } from "@/lib/queries/rooms";
 
@@ -190,6 +191,10 @@ export function useRoomMessages(
                 },
               ];
             });
+
+            if (isRoomNotificationsEnabled(roomId)) {
+              notifyIfTabHidden();
+            }
           }
         )
         .subscribe();
@@ -274,6 +279,15 @@ export function useRoomMessages(
                 createdAt: now,
                 isSystemNotice: true,
               });
+              // 새 멤버가 들어오면 이 신호(room_members INSERT, DB 쓰기 직후 빠르게 도착)와
+              // Presence join(§lib/realtime/presence.ts, 채널 연결+track() 왕복이 필요해 느림)이
+              // 한 쌍으로 발생한다 — claimJoinSignal로 이 쌍의 첫 신호에서만 알림음을 울린다.
+              if (
+                isRoomNotificationsEnabled(roomId) &&
+                claimJoinSignal(`room-join:${roomId}:${p.id}`, "db")
+              ) {
+                notifyIfTabHidden();
+              }
             }
             for (const p of left) {
               if (p.id === currentUserId) continue;

@@ -15,6 +15,7 @@ import {
 } from "@/lib/storage/chat-images";
 import { showError } from "@/lib/utils/toast";
 import { generateTempId } from "@/lib/utils/temp-id";
+import { isGlobalNotificationsEnabled, notifyIfTabHidden } from "@/lib/utils/notify";
 import type { ChatMessage } from "@/components/chat/chat-message-bubble";
 
 /**
@@ -219,6 +220,10 @@ export function useRandomSessionMessages(
                 },
               ];
             });
+
+            if (isGlobalNotificationsEnabled()) {
+              notifyIfTabHidden();
+            }
           }
         )
         .subscribe();
