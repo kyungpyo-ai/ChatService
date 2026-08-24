@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { claimNotifyOnce, isRoomNotificationsEnabled, notifyIfTabHidden } from "@/lib/utils/notify";
+import { claimJoinSignal, isRoomNotificationsEnabled, notifyIfTabHidden } from "@/lib/utils/notify";
 
 // 구독 직후 한동안(연결 수립 + 초기 상태 동기화 시간) 도착하는 join은 "이미 있던 사람"이
 // 뒤늦게 보고되는 것일 뿐, 진짜 새로 온라인이 된 게 아니다 — sync 이벤트 하나만으로 구분하려
@@ -39,9 +39,12 @@ export function useRoomPresence(roomId: string, userId: string): Set<string> {
       .on("presence", { event: "join" }, ({ key }) => {
         if (key === userId) return;
         if (Date.now() - mountedAtRef.current < PRESENCE_SETTLE_GRACE_MS) return;
-        // room_members INSERT(§lib/realtime/messages.ts)가 더 빠르게 도착해 이미 알림을
-        // 울렸을 수 있으므로, 같은 사람에 대해 아직 처리 안 된 경우에만 여기서 울린다.
-        if (isRoomNotificationsEnabled(roomId) && claimNotifyOnce(`room-join:${roomId}:${key}`)) {
+        // room_members INSERT(§lib/realtime/messages.ts)와 한 쌍의 신호다 — claimJoinSignal이
+        // 이 쌍의 첫 신호일 때만 true를 돌려주므로, 이미 그쪽에서 울렸으면 여기선 건너뛴다.
+        if (
+          isRoomNotificationsEnabled(roomId) &&
+          claimJoinSignal(`room-join:${roomId}:${key}`, "presence")
+        ) {
           notifyIfTabHidden();
         }
       })

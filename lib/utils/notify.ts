@@ -108,25 +108,29 @@ export function notifyIfTabHidden() {
   playChime();
 }
 
-const recentNotifyKeys = new Map<string, number>();
-// 같은 입장 이벤트에 대한 두 신호(DB INSERT/Presence join) 사이의 실제 격차(보통 1초 안팎)만
-// 덮으면 충분하다 — 너무 길게 잡으면 "나갔다가 금방 다시 들어오는" 진짜 새 입장까지 중복으로
-// 오인해 알림이 안 울리는 문제가 있었다(§실사용 확인 2026-08-24).
-const NOTIFY_DEDUP_WINDOW_MS = 2000;
+type JoinSignalSource = "db" | "presence";
+const pendingJoinSignals = new Map<string, JoinSignalSource>();
 
 /**
  * 방 입장은 room_members INSERT(빠름, DB 쓰기 직후 도착)와 Presence join(느림, 채널 연결+
- * track() 왕복 필요) 두 신호로 동시에 감지된다 — 새 멤버가 들어오면 둘 다 울리므로, 느린
- * 쪽만 남기면 알림이 늦어지고 둘 다 울리면 중복된다. 그래서 "같은 대상에 대해 먼저 도착한
- * 신호가 우선"하도록 하되 중복은 걸러낸다: 이 함수를 호출한 쪽이 먼저면 true(알림 진행),
- * 이미 다른 신호가 같은 key로 최근에 처리했으면 false(건너뜀)를 반환한다.
+ * track() 왕복 필요) 두 신호로 감지된다 — 새 멤버가 들어오면 둘 다 울리므로 그대로 두면
+ * 중복이다. 시간 창으로 걸러내려 했더니(예: "2초 안의 join은 중복") 두 신호 사이 실제
+ * 간격이 매번 달라서 창을 넉넉히 잡으면 빠른 재입장이 씹히고, 짧게 잡으면 가끔 중복이
+ * 그대로 통과했다(§실사용 확인 2026-08-24). 그래서 시간 대신 "이 사람에 대해 두 신호가
+ * 각각 정확히 한 번씩 왔는지"를 추적한다: 한쪽 신호가 오면 알리고 대기시켜두다가, 다른
+ * 쪽 신호가 오면 그 쌍을 소비하고 상태를 지운다(중복 없이, 다음 재입장을 위해 깨끗한
+ * 상태로 되돌아감) — 같은 쪽 신호가 대기 중에 또 오면(예: 재구독) 무시한다.
  */
-export function claimNotifyOnce(key: string): boolean {
-  const now = Date.now();
-  for (const [k, t] of recentNotifyKeys) {
-    if (now - t > NOTIFY_DEDUP_WINDOW_MS) recentNotifyKeys.delete(k);
+export function claimJoinSignal(key: string, source: JoinSignalSource): boolean {
+  const pending = pendingJoinSignals.get(key);
+
+  if (pending === undefined) {
+    pendingJoinSignals.set(key, source);
+    return true; // 이 쌍의 첫 신호 — 알림
   }
-  if (recentNotifyKeys.has(key)) return false;
-  recentNotifyKeys.set(key, now);
-  return true;
+  if (pending === source) {
+    return false; // 같은 쪽 신호 중복 도착 — 무시
+  }
+  pendingJoinSignals.delete(key); // 쌍이 완성됨 — 다음 재입장을 위해 상태 초기화
+  return false; // 이미 첫 신호에서 알렸으므로 다시 알리지 않음
 }
