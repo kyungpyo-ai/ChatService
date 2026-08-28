@@ -11,6 +11,54 @@ import { claimJoinSignal, isRoomNotificationsEnabled, notifyIfTabHidden } from "
 // 시간 동안의 join은 시간 기준으로 걸러낸다.
 const PRESENCE_SETTLE_GRACE_MS = 2000;
 
+// Presence(웹소켓)만으로는 실사용 환경에서 접속 중인데도 오프라인으로 잘못 뜨는 경우가
+// 있다(§CLAUDE.md 실사용 함정 — Presence 하트비트가 25초라 기대만큼 안 빠름, 모바일 신호 유실 등).
+// 방 목록(getRoomList)이 쓰는 것과 같은 last_seen_at 폴링을 보조 신호로 함께 반영해
+// Presence가 끊겨도 실제로 접속 중이면 온라인으로 보이게 한다.
+const HEARTBEAT_ONLINE_THRESHOLD_MS = 60 * 1000;
+const HEARTBEAT_POLL_INTERVAL_MS = 20 * 1000;
+
+/**
+ * 참가자들의 last_seen_at을 주기적으로 폴링해 온라인 여부를 보조로 판정한다.
+ * Presence와 별개의 신호이므로 호출 쪽에서 두 Set을 합쳐서 사용한다.
+ */
+export function useParticipantsHeartbeatOnline(participantIds: string[]): Set<string> {
+  const [onlineIds, setOnlineIds] = useState<Set<string>>(new Set());
+  const idsKey = [...participantIds].sort().join(",");
+
+  useEffect(() => {
+    const ids = idsKey ? idsKey.split(",") : [];
+    const supabase = createClient();
+    let cancelled = false;
+
+    const poll = async () => {
+      if (ids.length === 0) {
+        if (!cancelled) setOnlineIds(new Set());
+        return;
+      }
+      const { data } = await supabase.from("profiles").select("id, last_seen_at").in("id", ids);
+      if (cancelled || !data) return;
+      const threshold = Date.now() - HEARTBEAT_ONLINE_THRESHOLD_MS;
+      setOnlineIds(
+        new Set(
+          data
+            .filter((p) => p.last_seen_at && new Date(p.last_seen_at).getTime() > threshold)
+            .map((p) => p.id)
+        )
+      );
+    };
+
+    void poll();
+    const interval = ids.length === 0 ? null : setInterval(poll, HEARTBEAT_POLL_INTERVAL_MS);
+    return () => {
+      cancelled = true;
+      if (interval) clearInterval(interval);
+    };
+  }, [idsKey]);
+
+  return onlineIds;
+}
+
 /**
  * 방채팅 온라인 상태 구독 (Realtime Presence)
  *

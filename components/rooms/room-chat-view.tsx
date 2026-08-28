@@ -10,7 +10,7 @@ import { ParticipantList, ParticipantSidePanel } from "@/components/rooms/partic
 import { LeaveRoomDialog } from "@/components/rooms/leave-room-dialog";
 import { RoomReportButton } from "@/components/rooms/report-button";
 import { useRoomMessages } from "@/lib/realtime/messages";
-import { useRoomPresence } from "@/lib/realtime/presence";
+import { useRoomPresence, useParticipantsHeartbeatOnline } from "@/lib/realtime/presence";
 import { useRoomHeartbeat } from "@/lib/hooks/use-room-heartbeat";
 import { kickMemberAction, leaveRoomAction } from "@/app/actions/rooms";
 import { showError, showInfo } from "@/lib/utils/toast";
@@ -69,6 +69,7 @@ export function RoomChatView({
     sendImageMessage,
   } = useRoomMessages(roomId, initialMessages, initialParticipants, currentUserId);
   const presenceOnlineUserIds = useRoomPresence(roomId, currentUserId);
+  const heartbeatOnlineUserIds = useParticipantsHeartbeatOnline(participants.map((p) => p.id));
   useRoomHeartbeat(roomId);
   // Presence는 채널 연결 + track() 왕복이 끝나야 다른 사람에게 "온라인"으로 보이므로,
   // 새로 들어온 참여자를 다른 사람들 화면에서는 실제보다 늦게 온라인으로 표시하는 지연이
@@ -95,10 +96,11 @@ export function RoomChatView({
     }, 5000);
     return () => clearTimeout(timer);
   }, [participants, currentUserId]);
-  const onlineUserIds =
-    recentlyJoinedIds.size === 0
-      ? presenceOnlineUserIds
-      : new Set([...presenceOnlineUserIds, ...recentlyJoinedIds]);
+  const onlineUserIds = new Set([
+    ...presenceOnlineUserIds,
+    ...heartbeatOnlineUserIds,
+    ...recentlyJoinedIds,
+  ]);
   const isOwner = participants.some((p) => p.id === currentUserId && p.isOwner);
   const memberCount = participants.length;
   const scrollContainerRef = useRef<HTMLDivElement>(null);
