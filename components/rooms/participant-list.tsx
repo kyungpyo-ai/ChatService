@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { getAvatarColorClass } from "@/lib/utils/avatar";
+import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -40,7 +42,9 @@ function ParticipantRow({
       <div className="relative shrink-0">
         <Avatar className="h-9 w-9">
           <AvatarImage src={participant.avatarUrl ?? undefined} alt={participant.nickname} />
-          <AvatarFallback>{participant.nickname[0]}</AvatarFallback>
+          <AvatarFallback className={cn("text-white", getAvatarColorClass(participant.nickname))}>
+            {participant.nickname[0]}
+          </AvatarFallback>
         </Avatar>
         {online && (
           <span className="border-surface absolute right-0 bottom-0 h-2.5 w-2.5 rounded-full border-2 bg-green-500" />

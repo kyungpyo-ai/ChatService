@@ -2,6 +2,7 @@ import { ChevronRight, Mail } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { getAvatarColorClass } from "@/lib/utils/avatar";
 import type { SearchUserResult } from "@/lib/queries/users";
 
 interface UserSearchResultItemProps {
@@ -25,7 +26,9 @@ export function UserSearchResultItem({ user, onClick, onSendDm }: UserSearchResu
         <div className="relative">
           <Avatar className="h-10 w-10">
             <AvatarImage src={user.avatarUrl ?? undefined} alt={user.nickname} />
-            <AvatarFallback>{user.nickname[0]}</AvatarFallback>
+            <AvatarFallback className={cn("text-white", getAvatarColorClass(user.nickname))}>
+              {user.nickname[0]}
+            </AvatarFallback>
           </Avatar>
           <span
             className={cn(

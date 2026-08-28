@@ -4,6 +4,8 @@ import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronLeft, Eye, Flag, MoreVertical, Trash2 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { getAvatarColorClass } from "@/lib/utils/avatar";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { TransitionLink } from "@/components/ui/transition-link";
@@ -130,7 +132,9 @@ export function PostDetailView({ post, currentUserId }: PostDetailViewProps) {
         <div className="flex items-center gap-2">
           <Avatar className="h-8 w-8">
             <AvatarImage src={post.authorAvatarUrl ?? undefined} alt={post.authorNickname} />
-            <AvatarFallback>{post.authorNickname[0]}</AvatarFallback>
+            <AvatarFallback className={cn("text-white", getAvatarColorClass(post.authorNickname))}>
+              {post.authorNickname[0]}
+            </AvatarFallback>
           </Avatar>
           <div className="min-w-0 flex-1">
             <p className="text-sm font-semibold">{post.authorNickname}</p>
@@ -161,7 +165,11 @@ export function PostDetailView({ post, currentUserId }: PostDetailViewProps) {
                     src={comment.authorAvatarUrl ?? undefined}
                     alt={comment.authorNickname}
                   />
-                  <AvatarFallback>{comment.authorNickname[0]}</AvatarFallback>
+                  <AvatarFallback
+                    className={cn("text-white", getAvatarColorClass(comment.authorNickname))}
+                  >
+                    {comment.authorNickname[0]}
+                  </AvatarFallback>
                 </Avatar>
                 <div className="bg-surface-muted min-w-0 flex-1 rounded-(--radius-card) px-3 py-2">
                   <div className="flex items-center justify-between gap-2">

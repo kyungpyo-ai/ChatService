@@ -2,6 +2,7 @@
 
 import { Mail } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { getAvatarColorClass } from "@/lib/utils/avatar";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -40,7 +41,9 @@ export function UserProfileDialog({ user, open, onOpenChange, onSendDm }: UserPr
               <div className="relative">
                 <Avatar className="h-16 w-16">
                   <AvatarImage src={user.avatarUrl ?? undefined} alt={user.nickname} />
-                  <AvatarFallback>{user.nickname[0]}</AvatarFallback>
+                  <AvatarFallback className={cn("text-white", getAvatarColorClass(user.nickname))}>
+                    {user.nickname[0]}
+                  </AvatarFallback>
                 </Avatar>
                 <span
                   className={cn(

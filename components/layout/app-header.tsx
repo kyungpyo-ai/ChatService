@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { BrandLogo } from "@/components/layout/brand-logo";
+import { getAvatarColorClass } from "@/lib/utils/avatar";
+import { cn } from "@/lib/utils";
 
 interface AppHeaderProps {
   isLoggedIn: boolean;
@@ -29,7 +31,9 @@ export function AppHeader({ isLoggedIn, avatarUrl, nickname }: AppHeaderProps) {
         >
           <Avatar className="h-8 w-8">
             <AvatarImage src={avatarUrl ?? undefined} alt={nickname ?? "프로필"} />
-            <AvatarFallback>{nickname?.[0] ?? "?"}</AvatarFallback>
+            <AvatarFallback className={cn("text-white", getAvatarColorClass(nickname))}>
+              {nickname?.[0] ?? "?"}
+            </AvatarFallback>
           </Avatar>
         </Link>
       </div>

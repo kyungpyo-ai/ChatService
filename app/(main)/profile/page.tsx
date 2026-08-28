@@ -7,6 +7,8 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { DeleteAccountButton } from "@/components/delete-account-button";
 import { signOut } from "@/app/actions/auth";
+import { getAvatarColorClass } from "@/lib/utils/avatar";
+import { cn } from "@/lib/utils";
 
 export const metadata: Metadata = {
   robots: { index: false, follow: false },
@@ -34,7 +36,9 @@ export default async function ProfilePage() {
         <div className="flex items-center gap-4">
           <Avatar className="h-16 w-16">
             <AvatarImage src={profile.avatar_url ?? undefined} alt={profile.username ?? "프로필"} />
-            <AvatarFallback>{profile.username?.[0] ?? "?"}</AvatarFallback>
+            <AvatarFallback className={cn("text-white", getAvatarColorClass(profile.username))}>
+              {profile.username?.[0] ?? "?"}
+            </AvatarFallback>
           </Avatar>
           <div>
             <p className="text-lg font-bold">{profile.username ?? "닉네임 없음"}</p>

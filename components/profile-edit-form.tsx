@@ -35,6 +35,8 @@ import { showSuccess, showError } from "@/lib/utils/toast";
 import { updateProfileAction, checkUsernameAction } from "@/app/actions/profile";
 import { uploadAvatar, AVATAR_ALLOWED_MIME_TYPES } from "@/lib/storage/avatars";
 import { createClient } from "@/lib/supabase/client";
+import { getAvatarColorClass } from "@/lib/utils/avatar";
+import { cn } from "@/lib/utils";
 import type { User } from "@/lib/types/models";
 import { useEffect, useRef, useState } from "react";
 import { useDebouncedCallback } from "use-debounce";
@@ -237,7 +239,11 @@ export function ProfileEditForm({ profile }: ProfileEditFormProps) {
                     <div className="flex items-center gap-4">
                       <Avatar className="h-16 w-16">
                         <AvatarImage src={watchedAvatarUrl || undefined} alt="아바타 미리보기" />
-                        <AvatarFallback>{(profile.username ?? "?")[0]}</AvatarFallback>
+                        <AvatarFallback
+                          className={cn("text-white", getAvatarColorClass(profile.username))}
+                        >
+                          {(profile.username ?? "?")[0]}
+                        </AvatarFallback>
                       </Avatar>
                       <input
                         ref={fileInputRef}

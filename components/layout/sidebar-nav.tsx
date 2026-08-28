@@ -17,6 +17,7 @@ import {
 import { cn } from "@/lib/utils";
 import { AdBanner } from "@/components/layout/ad-banner";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { getAvatarColorClass } from "@/lib/utils/avatar";
 import { Button } from "@/components/ui/button";
 import { ThemeSwitcher } from "@/components/theme-switcher";
 import { signOut } from "@/app/actions/auth";
@@ -95,7 +96,9 @@ export function SidebarNav({
             >
               <Avatar className="h-10 w-10">
                 <AvatarImage src={avatarUrl ?? undefined} alt={nickname ?? "프로필"} />
-                <AvatarFallback>{nickname?.[0] ?? "?"}</AvatarFallback>
+                <AvatarFallback className={cn("text-white", getAvatarColorClass(nickname))}>
+                  {nickname?.[0] ?? "?"}
+                </AvatarFallback>
               </Avatar>
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-semibold">{nickname ?? "닉네임 없음"}</p>

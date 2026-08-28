@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowDownLeft, ArrowUpRight, MoreVertical, Trash2 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { getAvatarColorClass } from "@/lib/utils/avatar";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -69,7 +70,11 @@ export function DmNoteList({ notes: initialNotes }: DmNoteListProps) {
           >
             <Avatar className="h-11 w-11 shrink-0">
               <AvatarImage src={note.partnerAvatarUrl ?? undefined} alt={note.partnerNickname} />
-              <AvatarFallback>{note.partnerNickname[0]}</AvatarFallback>
+              <AvatarFallback
+                className={cn("text-white", getAvatarColorClass(note.partnerNickname))}
+              >
+                {note.partnerNickname[0]}
+              </AvatarFallback>
             </Avatar>
 
             <div className="min-w-0 flex-1">

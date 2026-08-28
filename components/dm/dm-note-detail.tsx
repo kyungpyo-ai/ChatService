@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronLeft, Reply } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { getAvatarColorClass } from "@/lib/utils/avatar";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { TransitionLink } from "@/components/ui/transition-link";
@@ -77,7 +79,9 @@ export function DmNoteDetailView({ note }: DmNoteDetailViewProps) {
         <div className="flex items-center gap-3">
           <Avatar className="h-10 w-10">
             <AvatarImage src={note.partnerAvatarUrl ?? undefined} alt={note.partnerNickname} />
-            <AvatarFallback>{note.partnerNickname[0]}</AvatarFallback>
+            <AvatarFallback className={cn("text-white", getAvatarColorClass(note.partnerNickname))}>
+              {note.partnerNickname[0]}
+            </AvatarFallback>
           </Avatar>
           <div className="min-w-0 flex-1">
             <p className="text-sm font-semibold">

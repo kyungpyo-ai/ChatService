@@ -8,6 +8,7 @@ import { createClient } from "@/lib/supabase/client";
 import { CHAT_IMAGES_BUCKET, getSignedChatImageUrl } from "@/lib/storage/chat-images";
 import { formatChatTime } from "@/lib/utils/date";
 import { cn } from "@/lib/utils";
+import { getAvatarColorClass } from "@/lib/utils/avatar";
 
 export interface ChatMessage {
   id: string;
@@ -140,7 +141,9 @@ export function ChatMessageBubble({ message, variant }: ChatMessageBubbleProps) 
       {!isMe && (
         <Avatar className="h-8 w-8">
           <AvatarImage src={message.senderAvatarUrl ?? undefined} alt={message.senderName} />
-          <AvatarFallback>{message.senderName[0]}</AvatarFallback>
+          <AvatarFallback className={cn("text-white", getAvatarColorClass(message.senderName))}>
+            {message.senderName[0]}
+          </AvatarFallback>
         </Avatar>
       )}
 

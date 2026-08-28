@@ -8,6 +8,8 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { sendDmNoteAction } from "@/app/actions/dm";
 import { showError, showSuccess } from "@/lib/utils/toast";
+import { getAvatarColorClass } from "@/lib/utils/avatar";
+import { cn } from "@/lib/utils";
 
 interface DmComposeFormProps {
   recipientId: string;
@@ -50,7 +52,9 @@ export function DmComposeForm({
       <div className="flex items-center gap-3">
         <Avatar className="h-11 w-11">
           <AvatarImage src={recipientAvatarUrl ?? undefined} alt={recipientNickname} />
-          <AvatarFallback>{recipientNickname[0]}</AvatarFallback>
+          <AvatarFallback className={cn("text-white", getAvatarColorClass(recipientNickname))}>
+            {recipientNickname[0]}
+          </AvatarFallback>
         </Avatar>
         <div>
           <p className="text-muted-foreground text-xs">받는 사람</p>
