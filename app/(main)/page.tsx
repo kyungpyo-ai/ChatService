@@ -1,6 +1,7 @@
 import { MessageCircle, Users } from "lucide-react";
 import { HeroActionRow } from "@/components/home/hero-action-row";
 import { AccessInfoList } from "@/components/home/access-info-list";
+import { HomeSeoContent } from "@/components/home/home-seo-content";
 import { AdBanner } from "@/components/layout/ad-banner";
 
 export default function HomePage() {
@@ -37,6 +38,8 @@ export default function HomePage() {
         <AdBanner />
 
         <AccessInfoList />
+
+        <HomeSeoContent />
       </div>
     </div>
   );
