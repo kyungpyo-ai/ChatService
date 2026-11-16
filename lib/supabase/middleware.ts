@@ -67,6 +67,8 @@ export async function updateSession(request: NextRequest) {
     request.nextUrl.pathname.startsWith("/rooms") ||
     request.nextUrl.pathname.startsWith("/board") ||
     request.nextUrl.pathname.startsWith("/legal") ||
+    request.nextUrl.pathname === "/guide" ||
+    request.nextUrl.pathname === "/faq" ||
     request.nextUrl.pathname === "/robots.txt" ||
     request.nextUrl.pathname === "/sitemap.xml" ||
     request.nextUrl.pathname === "/manifest.webmanifest" ||

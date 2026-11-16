@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { MessageCircle, Users } from "lucide-react";
 import { HeroActionRow } from "@/components/home/hero-action-row";
 import { AccessInfoList } from "@/components/home/access-info-list";
@@ -37,6 +38,25 @@ export default function HomePage() {
         <AdBanner />
 
         <AccessInfoList />
+
+        {/* 검색엔진이 이용 가이드/FAQ 페이지를 발견할 수 있도록 하는 최소한의 내부 링크 */}
+        <nav className="text-muted-foreground flex flex-wrap justify-center gap-x-3 gap-y-1 text-xs">
+          <Link href="/guide" className="hover:text-foreground hover:underline">
+            이용 가이드
+          </Link>
+          <span aria-hidden>·</span>
+          <Link href="/faq" className="hover:text-foreground hover:underline">
+            자주 묻는 질문
+          </Link>
+          <span aria-hidden>·</span>
+          <Link href="/legal/terms" className="hover:text-foreground hover:underline">
+            이용약관
+          </Link>
+          <span aria-hidden>·</span>
+          <Link href="/legal/privacy" className="hover:text-foreground hover:underline">
+            개인정보처리방침
+          </Link>
+        </nav>
       </div>
     </div>
   );
