@@ -9,6 +9,10 @@ export const metadata: Metadata = {
   title: "방채팅 목록 — 무료 채팅방 | 달나루",
   description:
     "마음에 드는 무료 채팅방에 바로 참여해보세요. 원하는 방이 없다면 직접 채팅방을 만들 수도 있어요.",
+  // 방 제목은 사용자가 자유롭게 짓는 문구라 부적절한 표현이 섞일 수 있고, 검색엔진이 이를 근거로
+  // 사이트 전체를 성인 콘텐츠로 분류(세이프서치 제외)할 위험이 있어 방 목록은 색인에서 제외한다.
+  // 검색 노출은 /guide, /faq, 게시판 같은 운영자가 관리하는 텍스트 페이지로 대신한다.
+  robots: { index: false, follow: false },
 };
 
 export default async function RoomListPage() {
