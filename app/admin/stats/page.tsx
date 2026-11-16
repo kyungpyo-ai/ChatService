@@ -1,8 +1,10 @@
 import { DailyStatsPanel } from "@/components/admin/daily-stats-panel";
 import { getDailyStatsAction } from "@/app/actions/admin";
 
+// DB 통계의 "오늘"이 한국 시간 자정 기준이므로(kst_today()), 서버(UTC)의 toISOString()이 아닌
+// KST 날짜로 변환한다 — 그렇지 않으면 KST 0~9시에는 기본 조회 범위가 하루 전으로 밀린다.
 function toDateInputValue(date: Date): string {
-  return date.toISOString().slice(0, 10);
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul" }).format(date);
 }
 
 /**
