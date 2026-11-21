@@ -4,6 +4,7 @@ import { getUserProfile } from "@/lib/queries/profile";
 import { AppHeader } from "@/components/layout/app-header";
 import { MainNav } from "@/components/layout/main-nav";
 import { HeartbeatProvider } from "@/components/layout/heartbeat-provider";
+import { SiteFooter } from "@/components/layout/site-footer";
 
 /**
  * (main) route group 공용 레이아웃 — AppHeader(모바일) + BottomNav(모바일) / SidebarNav(PC)
@@ -41,7 +42,10 @@ export default async function MainLayout({ children }: { children: React.ReactNo
         nickname={profile?.username}
       />
 
-      <main className="pb-16 md:ml-60 md:pb-0">{children}</main>
+      <main className="pb-16 md:ml-60 md:pb-0">
+        {children}
+        <SiteFooter />
+      </main>
     </div>
   );
 }

@@ -1,11 +1,12 @@
 /**
  * 개인정보처리방침 페이지
  *
- * 실제 문구는 법률 검토 후 확정된다(§DEVELOPMENT_PLAN 7.7.2). 지금은 회원가입 동의
- * 흐름에서 링크로 열람 가능하도록 골격만 마련한다.
+ * 회원가입 동의 흐름과 사이트 하단 링크에서 열람한다. 보호책임자 연락처·시행일은
+ * lib/utils/site.ts의 공용 상수를 쓴다(문서 개정 시 legalEffectiveDate 갱신).
  */
 
 import type { Metadata } from "next";
+import { contactEmail, legalEffectiveDate } from "@/lib/utils/site";
 
 export const metadata: Metadata = {
   title: "개인정보처리방침 | 달나루",
@@ -71,7 +72,30 @@ export default function PrivacyPage() {
             에서 해제할 수 있습니다. 쿠키 저장을 거부해도 서비스 이용에는 제한이 없습니다.
           </p>
         </section>
-        <p className="text-xs">본 방침은 초안이며, 법률 검토를 거쳐 최종 확정됩니다.</p>
+        <section>
+          <h2 className="text-foreground mb-2 text-base font-semibold">
+            6. 개인정보 보호책임자 및 문의처
+          </h2>
+          <p>
+            개인정보 처리에 관한 문의, 열람·정정·삭제 요청, 불만 처리 및 피해 구제는 아래 연락처로
+            요청하실 수 있으며, 지체 없이 답변·처리하겠습니다.
+          </p>
+          <p className="mt-2">
+            개인정보 보호책임자: 달나루 운영자 ·{" "}
+            <a href={`mailto:${contactEmail}`} className="text-foreground underline">
+              {contactEmail}
+            </a>
+          </p>
+          <p className="mt-2">
+            기타 개인정보 침해에 대한 신고나 상담이 필요한 경우 개인정보침해신고센터(국번 없이 118,
+            privacy.kisa.or.kr) 또는 개인정보분쟁조정위원회(1833-6972, www.kopico.go.kr)에 문의하실
+            수 있습니다.
+          </p>
+        </section>
+        <section>
+          <h2 className="text-foreground mb-2 text-base font-semibold">7. 시행일</h2>
+          <p>본 개인정보처리방침은 {legalEffectiveDate}부터 시행됩니다.</p>
+        </section>
       </div>
     </div>
   );

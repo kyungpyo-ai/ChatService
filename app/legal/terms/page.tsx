@@ -1,11 +1,12 @@
 /**
  * 이용약관 페이지
  *
- * 실제 문구는 법률 검토 후 확정된다(§DEVELOPMENT_PLAN 7.7.2). 지금은 회원가입 동의
- * 흐름에서 링크로 열람 가능하도록 골격만 마련한다.
+ * 회원가입 동의 흐름과 사이트 하단 링크에서 열람한다. 문의처·시행일은
+ * lib/utils/site.ts의 공용 상수를 쓴다(약관 개정 시 legalEffectiveDate 갱신).
  */
 
 import type { Metadata } from "next";
+import { contactEmail, legalEffectiveDate } from "@/lib/utils/site";
 
 export const metadata: Metadata = {
   title: "이용약관 | 달나루",
@@ -55,7 +56,20 @@ export default function TermsPage() {
             자료를 제공할 수 있습니다.
           </p>
         </section>
-        <p className="text-xs">본 약관은 초안이며, 법률 검토를 거쳐 최종 확정됩니다.</p>
+        <section>
+          <h2 className="text-foreground mb-2 text-base font-semibold">제6조 (문의)</h2>
+          <p>
+            서비스 이용과 관련한 문의, 신고, 권리 침해 신고는{" "}
+            <a href={`mailto:${contactEmail}`} className="text-foreground underline">
+              {contactEmail}
+            </a>
+            로 접수할 수 있습니다.
+          </p>
+        </section>
+        <section>
+          <h2 className="text-foreground mb-2 text-base font-semibold">부칙</h2>
+          <p>본 약관은 {legalEffectiveDate}부터 시행됩니다.</p>
+        </section>
       </div>
     </div>
   );

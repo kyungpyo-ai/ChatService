@@ -1,10 +1,11 @@
 /**
  * 청소년보호정책 페이지
  *
- * 실제 문구·연락처는 운영 결정 및 법률 검토 후 확정된다(§DEVELOPMENT_PLAN 7.7.2, 7.7.4).
+ * 사이트 하단 링크에서 열람한다. 연락처·시행일은 lib/utils/site.ts의 공용 상수를 쓴다.
  */
 
 import type { Metadata } from "next";
+import { contactEmail, legalEffectiveDate } from "@/lib/utils/site";
 
 export const metadata: Metadata = {
   title: "청소년보호정책 | 달나루",
@@ -33,11 +34,22 @@ export default function YouthProtectionPage() {
         </section>
         <section>
           <h2 className="text-foreground mb-2 text-base font-semibold">3. 청소년보호책임자</h2>
-          <p>이름 및 연락처: 추후 공지 (운영 결정 사항)</p>
+          <p>
+            청소년보호책임자: 달나루 운영자 ·{" "}
+            <a href={`mailto:${contactEmail}`} className="text-foreground underline">
+              {contactEmail}
+            </a>
+          </p>
+          <p className="mt-2">
+            청소년에게 유해한 정보나 청소년을 대상으로 한 만남 유도 등을 발견하면 서비스 내 신고
+            기능 또는 위 연락처로 알려주세요. 확인 즉시 해당 콘텐츠를 삭제하고 작성자의 이용을
+            제한합니다.
+          </p>
         </section>
-        <p className="text-xs">
-          본 정책은 초안이며, 법률 검토 및 운영 결정을 거쳐 최종 확정됩니다.
-        </p>
+        <section>
+          <h2 className="text-foreground mb-2 text-base font-semibold">4. 시행일</h2>
+          <p>본 정책은 {legalEffectiveDate}부터 시행됩니다.</p>
+        </section>
       </div>
     </div>
   );
