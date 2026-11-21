@@ -11,6 +11,7 @@ import {
   Flag,
   Server,
   BarChart3,
+  Images,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { BrandLogo } from "@/components/layout/brand-logo";
@@ -26,6 +27,7 @@ const NAV_ITEMS: {
   { href: "/admin/rooms", label: "방채팅", icon: MessagesSquare },
   { href: "/admin/random", label: "랜덤채팅", icon: Shuffle },
   { href: "/admin/messages", label: "메시지 검색", icon: MessageSquare },
+  { href: "/admin/images", label: "이미지 모아보기", icon: Images },
   { href: "/admin/users", label: "회원", icon: Users },
   { href: "/admin/reports", label: "신고", icon: Flag },
   { href: "/admin/system", label: "시스템", icon: Server },

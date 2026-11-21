@@ -11,7 +11,10 @@ function formatCreatedAgo(createdAt: string): string {
   const minutes = Math.max(0, Math.floor((Date.now() - new Date(createdAt).getTime()) / 60000));
   if (minutes < 60) return `${minutes}분 전 생성`;
   const hours = Math.floor(minutes / 60);
-  return `${hours}시간 전 생성`;
+  if (hours < 24) return `${hours}시간 전 생성`;
+  // 하루가 지나면 "123시간 전"처럼 길어지지 않도록 일 단위로 표시
+  const days = Math.floor(hours / 24);
+  return `${days}일 전 생성`;
 }
 
 /**

@@ -900,6 +900,24 @@ export type Database = {
         Args: { p_action_taken: string; p_report_id: string };
         Returns: undefined;
       };
+      admin_list_chat_images: {
+        Args: {
+          p_date_from: string;
+          p_date_to: string;
+          p_limit?: number;
+          p_offset?: number;
+          p_scope?: string;
+        };
+        Returns: {
+          context_id: string;
+          context_title: string;
+          created_at: string;
+          path: string;
+          sender_id: string;
+          sender_name: string;
+          source: string;
+        }[];
+      };
       admin_search_messages: {
         Args: {
           p_date_from: string;
