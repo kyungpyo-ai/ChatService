@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { ChatHeader } from "@/components/chat/chat-header";
 import { MatchingIndicator } from "@/components/random/matching-indicator";
+import { AdBanner } from "@/components/layout/ad-banner";
 import { useRandomMatching } from "@/lib/hooks/use-random-matching";
 import { useSingleTabLock } from "@/lib/hooks/use-single-tab-lock";
 import { cancelRandomQueueAction } from "@/app/actions/random";
@@ -102,6 +103,13 @@ function RandomMatchingClientActive() {
         </Button>
 
         <p className="text-muted-foreground mt-6 text-xs">TIP. 매너있는 대화는 모두가 즐거워요!</p>
+
+        {/*
+          매칭 대기 화면은 대화 내용(사용자 작성 콘텐츠)이 없어 광고 정책상 안전한 자리다.
+          "매칭 취소" 버튼과 붙어 있으면 오클릭(정책 위반)이 나기 쉬워 TIP 문구 아래로 충분히 띄운다.
+          대화 종료 화면은 지난 대화가 그대로 보이고 재매칭 버튼과 붙어 있어 광고를 넣지 않는다.
+        */}
+        <AdBanner className="mt-10 w-full" />
       </div>
     </div>
   );
