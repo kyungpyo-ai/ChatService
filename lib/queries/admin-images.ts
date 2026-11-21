@@ -72,15 +72,21 @@ export async function getAdminChatImages(params: {
 
   const urlByPath = new Map<string, string>();
   if (validPaths.length > 0) {
-    const adminClient = createAdminClient();
-    const { data: signed } = await adminClient.storage
-      .from(CHAT_IMAGES_BUCKET)
-      .createSignedUrls(validPaths, CHAT_IMAGE_SIGNED_URL_TTL_SECONDS);
+    // 서비스 롤 키가 없는 환경(현재 Vercel Preview는 Production에만 키가 등록돼 있음)에서도
+    // 화면 전체가 에러로 죽지 않도록, 서명 실패는 썸네일만 "파일 없음"으로 처리한다.
+    try {
+      const adminClient = createAdminClient();
+      const { data: signed } = await adminClient.storage
+        .from(CHAT_IMAGES_BUCKET)
+        .createSignedUrls(validPaths, CHAT_IMAGE_SIGNED_URL_TTL_SECONDS);
 
-    for (const item of signed ?? []) {
-      if (!item.error && item.signedUrl && item.path) {
-        urlByPath.set(item.path, item.signedUrl);
+      for (const item of signed ?? []) {
+        if (!item.error && item.signedUrl && item.path) {
+          urlByPath.set(item.path, item.signedUrl);
+        }
       }
+    } catch (error) {
+      console.error("[admin-images] 서명 URL 발급 실패", error);
     }
   }
 
