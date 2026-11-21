@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist } from "next/font/google";
 import Script from "next/script";
 import { ThemeProvider } from "next-themes";
+import { Analytics } from "@vercel/analytics/next";
 import { Toaster } from "@/components/ui/sonner";
 import { VersionWatcher } from "@/components/version-watcher";
 import { getBuildVersion } from "@/lib/utils/build-version";
@@ -89,6 +90,8 @@ export default function RootLayout({
           <Toaster />
           <VersionWatcher initialVersion={getBuildVersion()} />
         </ThemeProvider>
+        {/* Vercel Web Analytics — 쿠키 없이 방문자/페이지뷰만 집계(광고 신청·홍보 효과 확인용) */}
+        <Analytics />
         {adsenseClient && (
           <Script
             async
