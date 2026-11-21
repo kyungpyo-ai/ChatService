@@ -70,6 +70,7 @@ export async function updateSession(request: NextRequest) {
     request.nextUrl.pathname === "/guide" ||
     request.nextUrl.pathname === "/faq" ||
     request.nextUrl.pathname === "/robots.txt" ||
+    request.nextUrl.pathname === "/ads.txt" ||
     request.nextUrl.pathname === "/sitemap.xml" ||
     request.nextUrl.pathname === "/manifest.webmanifest" ||
     request.nextUrl.pathname === "/icon" ||

@@ -50,6 +50,27 @@ export default function PrivacyPage() {
             화면의 계정 탈퇴 기능을 통해 직접 삭제를 요청할 수도 있습니다.
           </p>
         </section>
+        <section>
+          <h2 className="text-foreground mb-2 text-base font-semibold">5. 광고 및 쿠키</h2>
+          <p>
+            서비스는 운영비 충당을 위해 Google AdSense, Kakao AdFit 등 제3자 광고 서비스를 이용할 수
+            있습니다. 이들 광고 사업자는 이용자의 관심사에 맞는 광고를 제공하기 위해 쿠키 및 광고
+            식별자 등 행태정보를 수집·이용할 수 있으며, 대화 내용 등 서비스 내 작성 정보는 광고
+            사업자에게 제공하지 않습니다.
+          </p>
+          <p className="mt-2">
+            이용자는 브라우저 설정에서 쿠키 저장을 거부하거나 삭제할 수 있고, Google 맞춤 광고는{" "}
+            <a
+              href="https://adssettings.google.com"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-foreground underline"
+            >
+              Google 광고 설정
+            </a>
+            에서 해제할 수 있습니다. 쿠키 저장을 거부해도 서비스 이용에는 제한이 없습니다.
+          </p>
+        </section>
         <p className="text-xs">본 방침은 초안이며, 법률 검토를 거쳐 최종 확정됩니다.</p>
       </div>
     </div>
