@@ -1,11 +1,13 @@
 import type { Metadata } from "next";
 import { Geist } from "next/font/google";
+import Script from "next/script";
 import { ThemeProvider } from "next-themes";
 import { Toaster } from "@/components/ui/sonner";
 import { VersionWatcher } from "@/components/version-watcher";
 import { getBuildVersion } from "@/lib/utils/build-version";
 import { DmBadgeProvider } from "@/components/dm/dm-badge-provider";
 import { siteUrl } from "@/lib/utils/site";
+import { adsenseClient } from "@/lib/ads/config";
 import "./globals.css";
 
 const title = "달나루 — 로그인 없는 랜덤채팅, 익명채팅, 방채팅";
@@ -33,6 +35,8 @@ export const metadata: Metadata = {
       "naver-site-verification": "a1140c96a3b343e3a1de75440c8f5aef026f8351",
     },
   },
+  // 애드센스 사이트 소유 확인용 메타 태그 (게시자 ID가 설정됐을 때만)
+  ...(adsenseClient ? { other: { "google-adsense-account": adsenseClient } } : {}),
 };
 
 const websiteJsonLd = {
@@ -85,6 +89,14 @@ export default function RootLayout({
           <Toaster />
           <VersionWatcher initialVersion={getBuildVersion()} />
         </ThemeProvider>
+        {adsenseClient && (
+          <Script
+            async
+            src={`https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${adsenseClient}`}
+            crossOrigin="anonymous"
+            strategy="afterInteractive"
+          />
+        )}
       </body>
     </html>
   );
